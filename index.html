@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HolyDrums</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="index-page">
+  <main class="index-layout">
+    <header class="index-header">
+      <div class="index-brand">
+        <img src="./assets/icon.svg" alt="HolyDrums Logo" width="28" height="28" />
+        <span class="index-brand-name">HolyDrums</span>
+      </div>
+    </header>
+
+    <div class="index-columns">
+      <section>
+        <div class="section-heading">
+          <h2 class="section-title">Músicas</h2>
+          <a class="btn-new" href="editor.html">Nova música</a>
+        </div>
+        <div id="song-list" class="song-list"></div>
+      </section>
+
+      <section>
+        <div class="section-heading">
+          <h2 class="section-title">Setlists</h2>
+          <button id="btn-new-setlist" class="btn-new" type="button">Nova setlist</button>
+        </div>
+        <div id="setlist-list" class="setlist-list"></div>
+      </section>
+    </div>
+
+    <section class="backup-bar">
+      <!-- backup local -->
+      <div class="backup-group">
+        <button id="btn-export" class="btn-backup" type="button">Exportar backup</button>
+        <button id="btn-import" class="btn-backup" type="button">Importar backup</button>
+        <input id="import-file" type="file" accept="application/json" hidden />
+      </div>
+
+      <!-- Google Drive (alinhado à direita) -->
+      <div class="backup-group backup-drive">
+        <button id="btn-drive-connect" class="btn-backup btn-drive-connect" type="button">
+          Conectar Drive
+        </button>
+        <button id="btn-drive-save" class="btn-backup btn-drive-save" type="button">
+          Salvar no Drive
+        </button>
+        <button id="btn-drive-load" class="btn-backup btn-drive-load" type="button">
+          Restaurar do Drive
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <!-- necessário para OAuth no navegador -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
