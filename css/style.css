@@ -409,6 +409,27 @@ a { color: inherit; text-decoration: none; }
     margin-bottom: 2px;
 }
 
+.instructions-card {
+    margin-top: auto; /* Ancorar embaixo na barra lateral */
+    background: transparent;
+    border: 1.5px dashed var(--border);
+    box-shadow: none;
+}
+
+.instructions-list {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    line-height: 1.5;
+}
+
+.instructions-list li::marker {
+    color: var(--text-muted);
+}
+
 /* FORM FIELDS */
 .field-group { display: flex; flex-direction: column; gap: 4px; }
 
