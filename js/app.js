@@ -92,6 +92,9 @@ function bindIndexEvents() {
     // Google Drive: restaurar backup
     document.getElementById('btn-drive-load')
         ?.addEventListener('click', handleDriveLoad);
+
+    // Garante estado inicial dos botões Drive (desconectado)
+    updateDriveUI(false);
 }
 
 function handleExportAllLocal() {
@@ -130,10 +133,44 @@ async function handleImportAllLocal(e) {
     }
 }
 
+let driveConnected = false;
+
+function updateDriveUI(connected) {
+    driveConnected = connected;
+
+    const btnConnect = document.getElementById('btn-drive-connect');
+    const btnSave    = document.getElementById('btn-drive-save');
+    const btnLoad    = document.getElementById('btn-drive-load');
+
+    if (btnConnect) {
+        if (connected) {
+            btnConnect.textContent = 'Desconectar Drive';
+            btnConnect.classList.add('btn-drive-disconnect');
+        } else {
+            btnConnect.textContent = 'Conectar Drive';
+            btnConnect.classList.remove('btn-drive-disconnect');
+        }
+    }
+
+    if (btnSave) {
+        btnSave.disabled = !connected;
+        btnSave.classList.toggle('btn-drive-active', connected);
+    }
+    if (btnLoad) {
+        btnLoad.disabled = !connected;
+        btnLoad.classList.toggle('btn-drive-active', connected);
+    }
+}
+
 async function handleDriveConnect() {
+    if (driveConnected) {
+        // Desconectar
+        updateDriveUI(false);
+        return;
+    }
     try {
         await connectDrive();
-        alert('Google Drive conectado com sucesso.');
+        updateDriveUI(true);
     } catch (err) {
         alert(`Falha ao conectar no Drive: ${err.message}`);
     }

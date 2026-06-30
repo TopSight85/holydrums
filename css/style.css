@@ -257,12 +257,45 @@ a { color: inherit; text-decoration: none; }
     font-weight: 500;
     color: var(--text-secondary);
     cursor: pointer;
-    transition: box-shadow .15s, color .15s;
+    transition: background .2s, box-shadow .15s, color .15s, border-color .2s, opacity .15s;
 }
 
 .btn-backup:hover {
     box-shadow: var(--shadow-sm);
     color: var(--text-primary);
+}
+
+/* Drive: desconectar (vermelho) */
+.btn-backup.btn-drive-disconnect {
+    background: rgb(var(--c2));
+    border-color: rgb(var(--c2));
+    color: #fff;
+}
+
+.btn-backup.btn-drive-disconnect:hover {
+    background: #b91c1c;
+    border-color: #b91c1c;
+    color: #fff;
+    box-shadow: var(--shadow-sm);
+}
+
+/* Drive: salvar/restaurar quando conectado */
+.btn-backup.btn-drive-active {
+    background: var(--text-primary);
+    border-color: var(--text-primary);
+    color: #fff;
+}
+
+.btn-backup.btn-drive-active:hover {
+    box-shadow: var(--shadow-md);
+    opacity: 0.88;
+}
+
+/* Drive: salvar/restaurar quando desconectado (desabilitado) */
+.btn-backup:disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+    pointer-events: none;
 }
 
 /* EMPTY STATE */
