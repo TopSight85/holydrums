@@ -756,7 +756,15 @@ function buildMarkItem(mark, sIdx, mIdx) {
 
     textarea.addEventListener('input', e => {
         editorState.sections[sIdx].marks[mIdx].lyrics = e.target.value;
+        e.target.style.height = 'auto';
+        e.target.style.height = e.target.scrollHeight + 'px';
     });
+
+    // Auto-resize inicial
+    setTimeout(() => {
+        textarea.style.height = 'auto';
+        textarea.style.height = textarea.scrollHeight + 'px';
+    }, 0);
 
     // ── Inputs de compasso ──
     const measureWrap = document.createElement('div');
@@ -1049,7 +1057,8 @@ async function loadSongInViewer(songIdx) {
     const tempoNoteEl = document.getElementById('viewer-tempo-note');
     if (tempoNoteEl) {
         tempoNoteEl.textContent = song.tempo?.note === 'half'   ? '𝅗𝅥'
-                                : song.tempo?.note === 'eighth' ? '♪' : '♩';
+                                : song.tempo?.note === 'eighth' ? '♪'
+                                : song.tempo?.note === 'dotted-quarter' ? '♩.' : '♩';
     }
     setText('viewer-bpm',    song.tempo?.bpm ?? '—');
 
@@ -1121,6 +1130,18 @@ function bindViewerEvents() {
     document.getElementById('btn-back')
         ?.addEventListener('click', () => {
             window.location.href = 'index.html';
+        });
+
+    // ── Botão Fullscreen ──
+    document.getElementById('btn-fullscreen')
+        ?.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.warn(`Erro ao ativar tela cheia: ${err.message}`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
         });
 
     document.getElementById('btn-prev-song')

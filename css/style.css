@@ -958,7 +958,7 @@ a { color: inherit; text-decoration: none; }
 /* SHEET GRID — AJUSTE PRINCIPAL */
 .sheet {
     display: grid;
-    grid-template-columns: minmax(260px, 1fr) minmax(0, 2fr);
+    grid-template-columns: 25% 75%;
     column-gap: 20px;
     row-gap: 0;
     align-items: start;
@@ -1017,10 +1017,10 @@ a { color: inherit; text-decoration: none; }
 /* MARKS */
 mark {
     display: block;
-    padding: 8px 12px;
+    padding: 6px 10px;
     color: inherit;
-    font-size: 0.93rem;
-    line-height: 2;
+    font-size: 0.85rem;
+    line-height: 1.6;
     border-left: 3px solid transparent;
 }
 
@@ -1060,13 +1060,13 @@ mark.nd {
 .measure-card {
     border-radius: var(--radius);
     border: 1.5px solid;
-    padding: 10px 10px 12px;
+    padding: 6px 10px 8px;
     box-shadow: var(--shadow-xs);
-    min-height: 180px;
+    min-height: 120px;
     height: auto;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
     overflow: visible; /* evita corte de notação */
 }
 

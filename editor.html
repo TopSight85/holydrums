@@ -59,9 +59,10 @@
                         <label for="tempo-bpm" class="field-label">Andamento</label>
                         <div class="tempo-row">
                             <select id="tempo-note" class="field-select">
-                                <option value="quarter">♩ Semínima</option>
-                                <option value="half">𝅗𝅥 Mínima</option>
-                                <option value="eighth">♪ Colcheia</option>
+                                <option value="eighth">♪</option>
+                                <option value="quarter" selected>♩</option>
+                                <option value="dotted-quarter">♩.</option>
+                                <option value="half">𝅗𝅥</option>
                             </select>
                             <span class="tempo-eq">=</span>
                             <input type="number" id="tempo-bpm" class="field-input tempo-bpm-input" value="80">
