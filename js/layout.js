@@ -209,7 +209,12 @@ function buildLyricEl(mark) {
 
     const markEl = document.createElement('mark');
     markEl.className = mark.groove;
-    markEl.innerHTML = escapeHTML(mark.lyrics).replace(/\n/g, '<br>');
+
+    let html = escapeHTML(mark.lyrics).replace(/\n/g, '<br>');
+    // Converte textos entre colchetes [assim] para a fonte manuscrita vermelha
+    html = html.replace(/\[(.*?)\]/g, '<span class="ann">$1</span>');
+    
+    markEl.innerHTML = html;
 
     el.appendChild(markEl);
     return el;
