@@ -265,30 +265,18 @@ a { color: inherit; text-decoration: none; }
     color: var(--text-primary);
 }
 
-/* Drive: desconectar (vermelho) */
+/* Drive: desconectar (vermelho suave) */
 .btn-backup.btn-drive-disconnect {
-    background: rgb(var(--c2));
-    border-color: rgb(var(--c2));
-    color: #fff;
+    background: #fef2f2;
+    border-color: #fca5a5;
+    color: #b91c1c;
 }
 
 .btn-backup.btn-drive-disconnect:hover {
-    background: #b91c1c;
-    border-color: #b91c1c;
-    color: #fff;
+    background: #fee2e2;
+    border-color: #f87171;
+    color: #991b1b;
     box-shadow: var(--shadow-sm);
-}
-
-/* Drive: salvar/restaurar quando conectado */
-.btn-backup.btn-drive-active {
-    background: var(--text-primary);
-    border-color: var(--text-primary);
-    color: #fff;
-}
-
-.btn-backup.btn-drive-active:hover {
-    box-shadow: var(--shadow-md);
-    opacity: 0.88;
 }
 
 /* Drive: salvar/restaurar quando desconectado (desabilitado) */

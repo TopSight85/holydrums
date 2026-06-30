@@ -154,11 +154,9 @@ function updateDriveUI(connected) {
 
     if (btnSave) {
         btnSave.disabled = !connected;
-        btnSave.classList.toggle('btn-drive-active', connected);
     }
     if (btnLoad) {
         btnLoad.disabled = !connected;
-        btnLoad.classList.toggle('btn-drive-active', connected);
     }
 }
 
