@@ -1132,6 +1132,17 @@ function bindViewerEvents() {
             window.location.href = 'index.html';
         });
 
+    // ── Botão de Layout (Colunas) ──
+    document.getElementById('btn-layout')
+        ?.addEventListener('click', () => {
+            const current = localStorage.getItem('holydrums_layout');
+            const next = current === 'single' ? 'double' : 'single';
+            localStorage.setItem('holydrums_layout', next);
+            
+            // Recarrega a música atual para aplicar o layout e forçar re-render do OSMD
+            loadSongInViewer(viewerState.songIdx);
+        });
+
     // ── Botão Fullscreen ──
     document.getElementById('btn-fullscreen')
         ?.addEventListener('click', () => {

@@ -135,6 +135,9 @@ async function renderPage(contentEl, pageIdx) {
 
     const sheet = document.createElement('div');
     sheet.className = 'sheet';
+    if (localStorage.getItem('holydrums_layout') === 'single') {
+        sheet.classList.add('sheet-single-col');
+    }
 
     // Constrói elementos FRESCOS para cada bloco (sem cloneNode)
     page.forEach(block => {

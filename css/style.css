@@ -968,12 +968,10 @@ a { color: inherit; text-decoration: none; }
     padding: 16px 16px 40px;     /* menos borda lateral */
 }
 
-/* mobile/tablet: empilha para legibilidade */
-@media (max-width: 980px) {
-    .sheet {
-        grid-template-columns: 1fr;
-        row-gap: 10px;
-    }
+/* CLASSE DE MODO COLUNA ÚNICA (ativada via botão) */
+.sheet.sheet-single-col {
+    grid-template-columns: 1fr;
+    row-gap: 10px;
 }
 
 /* SEPARADOR DE SEÇÃO */
