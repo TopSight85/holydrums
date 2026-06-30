@@ -1,6 +1,6 @@
 // app.js
 
-import { initDrive, connectDrive, saveBackupToDrive, loadBackupFromDrive } from './drive.js';
+import { initDrive, connectDrive, saveBackupToDrive, loadBackupFromDrive, isDriveConnectedPref, setDriveConnectedPref } from './drive.js';
 
 import {
     getAllSongs,
@@ -93,8 +93,12 @@ function bindIndexEvents() {
     document.getElementById('btn-drive-load')
         ?.addEventListener('click', handleDriveLoad);
 
-    // Garante estado inicial dos botões Drive (desconectado)
-    updateDriveUI(false);
+    // Define o estado inicial dos botões Drive baseado na persistência
+    if (isDriveConnectedPref()) {
+        updateDriveUI(true);
+    } else {
+        updateDriveUI(false);
+    }
 }
 
 function handleExportAllLocal() {
@@ -162,7 +166,8 @@ function updateDriveUI(connected) {
 
 async function handleDriveConnect() {
     if (driveConnected) {
-        // Desconectar
+        // Desconectar explicitamente
+        setDriveConnectedPref(false);
         updateDriveUI(false);
         return;
     }
@@ -171,6 +176,7 @@ async function handleDriveConnect() {
         updateDriveUI(true);
     } catch (err) {
         alert(`Falha ao conectar no Drive: ${err.message}`);
+        updateDriveUI(false);
     }
 }
 

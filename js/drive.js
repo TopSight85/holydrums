@@ -5,6 +5,19 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
 let tokenClient = null;
 let accessToken = null;
 
+export function isDriveConnectedPref() {
+    return localStorage.getItem('holydrums_drive_connected') === 'true';
+}
+
+export function setDriveConnectedPref(connected) {
+    if (connected) {
+        localStorage.setItem('holydrums_drive_connected', 'true');
+    } else {
+        localStorage.removeItem('holydrums_drive_connected');
+        accessToken = null;
+    }
+}
+
 export function initDrive() {
     if (!window.google?.accounts?.oauth2) {
         throw new Error('Google Identity Services não carregou.');
@@ -25,8 +38,12 @@ function getToken(interactive = true) {
         if (!tokenClient) return reject(new Error('Drive não inicializado.'));
 
         tokenClient.callback = (resp) => {
-            if (resp.error) return reject(new Error(resp.error));
+            if (resp.error) {
+                setDriveConnectedPref(false);
+                return reject(new Error(resp.error));
+            }
             accessToken = resp.access_token;
+            setDriveConnectedPref(true);
             resolve(accessToken);
         };
 
@@ -35,15 +52,28 @@ function getToken(interactive = true) {
 }
 
 async function driveFetch(url, options = {}) {
-    if (!accessToken) await getToken(true);
+    if (!accessToken) await getToken(false);
 
-    const res = await fetch(url, {
+    let res = await fetch(url, {
         ...options,
         headers: {
             Authorization: `Bearer ${accessToken}`,
             ...(options.headers || {}),
         },
     });
+
+    // Se o token expirou (401), tenta obter um novo silenciosamente e repete
+    if (res.status === 401) {
+        accessToken = null;
+        await getToken(false);
+        res = await fetch(url, {
+            ...options,
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                ...(options.headers || {}),
+            },
+        });
+    }
 
     if (!res.ok) {
         const txt = await res.text();
