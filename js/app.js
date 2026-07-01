@@ -733,7 +733,7 @@ function buildSectionItem(section, sIdx) {
 }
 
 function buildMarkItem(mark, sIdx, mIdx) {
-    const GROOVES = ['nd','g1','g2','g3','g4','g5','g6'];
+    const GROOVES = ['nd','g1','g2','g3','g4','g5','g6','g7','g8','g9','g10','g11','g12'];
 
     const item = document.createElement('div');
     item.className     = 'mark-item';

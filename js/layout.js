@@ -315,7 +315,7 @@ function destroyAll(contentEl) {
 
 function grooveLabel(groove, idx) {
     if (groove === 'nd') return 'Sem bateria';
-    const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+    const letters = ['A','B','C','D','E','F','G','H','I','J','K','L'];
     const num = parseInt(groove.replace('g', ''), 10);
     return `Groove ${letters[num - 1] ?? idx + 1}`;
 }
