@@ -19,7 +19,13 @@ import {
 } from './storage.js';
 
 import { parseMusicXML, looksLikeMusicXML } from './parser.js';
-import { waitForOSMD, isOSMDReady }         from './renderer.js';
+import {
+    waitForOSMD,
+    isOSMDReady,
+    renderMeasure,
+    renderMeasures,
+    destroyInstance,
+} from './renderer.js';
 import {
     buildSheet,
     goToPage,
@@ -497,10 +503,18 @@ function openSetlistEditor(setlistId) {
  * ════════════════════════════════════════════════════════════════ */
 
 let editorState = {
-    song:     null,
-    musicXML: null,
-    sections: [],
+    song:        null,
+    musicXML:    null,
+    parsedScore: null, // cache do MusicXML parseado, usado nas prévias de compasso
+    sections:    [],
 };
+
+// Referências aos cards de prévia atualmente na tela (recriadas a cada renderSections)
+let markPreviewRefs = [];
+
+// IDs de trechos cuja prévia está "ativa" (renderizada ou para re-renderizar
+// automaticamente após um rebuild da lista de seções)
+let renderedPreviewIds = new Set();
 
 function initEditor() {
     const params = new URLSearchParams(window.location.search);
@@ -528,11 +542,12 @@ function initEditor() {
 }
 
 function loadSongIntoEditor(song) {
-    editorState.song     = song;
-    editorState.musicXML = song.musicXML
+    editorState.song        = song;
+    editorState.musicXML    = song.musicXML
         ? decodeHTMLEntities(song.musicXML)
         : null;
-    editorState.sections = structuredClone(song.sections ?? []);
+    editorState.parsedScore = null;
+    editorState.sections    = structuredClone(song.sections ?? []);
 
     setValue('song-title',  song.title  ?? '');
     setValue('song-artist', song.artist ?? '');
@@ -541,6 +556,16 @@ function loadSongIntoEditor(song) {
     setValue('tempo-note',  song.tempo?.note ?? 'quarter');
 
     if (song.musicXML) showFilename(song.title + '.xml');
+
+    // Ao abrir o editor com uma partitura já vinculada, os trechos com
+    // compasso definido já entram marcados para prévia automática —
+    // mesmo comportamento de abertura do viewer.
+    renderedPreviewIds = new Set(
+        editorState.sections
+            .flatMap(s => s.marks)
+            .filter(m => m.measureStart)
+            .map(m => m.id)
+    );
 
     renderSections();
 }
@@ -578,6 +603,35 @@ function bindEditorEvents() {
             });
             renderSections();
         });
+
+    document.getElementById('btn-preview-all')
+        ?.addEventListener('click', handlePreviewAll);
+}
+
+async function handlePreviewAll() {
+    const btn = document.getElementById('btn-preview-all');
+
+    if (!editorState.musicXML) {
+        alert('Envie um arquivo MusicXML antes de gerar a prévia dos compassos.');
+        return;
+    }
+
+    const targets = markPreviewRefs.filter(ref => ref.getMark().measureStart);
+    if (!targets.length) {
+        alert('Nenhum trecho com compasso definido para gerar prévia.');
+        return;
+    }
+
+    targets.forEach(ref => renderedPreviewIds.add(ref.getMark().id));
+
+    btn?.classList.add('loading');
+    try {
+        await Promise.all(
+            targets.map(ref => renderMarkPreview(ref.card, ref.getMark()))
+        );
+    } finally {
+        btn?.classList.remove('loading');
+    }
 }
 
 async function handleFileUpload(e) {
@@ -595,8 +649,11 @@ async function processFile(file) {
 
     try {
         await parseMusicXML(text);
-        editorState.musicXML = text;
+        editorState.musicXML    = text;
+        editorState.parsedScore = null; // nova partitura: invalida cache de parse
+        renderedPreviewIds.clear();     // e qualquer prévia antiga perde sentido
         showFilename(file.name);
+        renderSections(); // reconstrói os cards de prévia zerados para a nova partitura
     } catch (err) {
         alert(`Erro ao ler o arquivo: ${err.message}`);
     }
@@ -609,16 +666,108 @@ function showFilename(name) {
     el.style.display = 'block';
 }
 
+/* ── PRÉVIA DE COMPASSOS ─────────────────────────────────────── */
+
+/** Faz o parse do MusicXML uma única vez e reaproveita o resultado. */
+async function getParsedScore() {
+    if (!editorState.musicXML) return null;
+    if (editorState.parsedScore) return editorState.parsedScore;
+
+    try {
+        editorState.parsedScore = await parseMusicXML(editorState.musicXML);
+    } catch (err) {
+        console.warn('editor: erro ao parsear MusicXML para prévia', err);
+        editorState.parsedScore = null;
+    }
+    return editorState.parsedScore;
+}
+
+/** Renderiza (ou re-renderiza) a prévia de um único trecho dentro do seu card. */
+async function renderMarkPreview(card, mark) {
+    if (!card) return;
+
+    // Sempre libera qualquer instância OSMD anterior antes de decidir o novo conteúdo
+    destroyInstance(card);
+    card.classList.remove('has-content');
+
+    if (!editorState.musicXML) {
+        card.classList.add('has-content');
+        card.innerHTML = '<span class="mark-preview-msg">Sem partitura</span>';
+        return;
+    }
+
+    if (!mark.measureStart) {
+        card.classList.add('has-content');
+        card.innerHTML = '<span class="mark-preview-msg">Sem compasso</span>';
+        return;
+    }
+
+    const parsed = await getParsedScore();
+    if (!parsed) {
+        card.classList.add('has-content');
+        card.innerHTML = '<span class="mark-preview-msg">Erro ao ler partitura</span>';
+        return;
+    }
+
+    const start = mark.measureStart;
+    const end   = mark.measureEnd ?? mark.measureStart;
+    const measures = parsed.measures.filter(m => m.number >= start && m.number <= end);
+
+    if (!measures.length) {
+        card.classList.add('has-content');
+        card.innerHTML = `<span class="mark-preview-msg">C.${start}${end !== start ? `–${end}` : ''} não encontrado</span>`;
+        return;
+    }
+
+    card.classList.add('loading');
+    try {
+        if (!isOSMDReady()) await waitForOSMD();
+
+        // OSMD precisa que o container já tenha width real > 0 para renderizar
+        await new Promise(resolve => requestAnimationFrame(resolve));
+
+        if (measures.length === 1) {
+            await renderMeasure(card, measures[0], editorState.musicXML);
+        } else {
+            await renderMeasures(card, measures, editorState.musicXML);
+        }
+        card.classList.add('has-content');
+    } catch (err) {
+        console.warn('editor: erro ao renderizar prévia do trecho', err);
+        card.innerHTML = '<span class="mark-preview-msg">Erro ao renderizar</span>';
+        card.classList.add('has-content');
+    } finally {
+        card.classList.remove('loading');
+    }
+}
+
+/** Re-renderiza somente as prévias que já estavam ativas (evita custo de renderizar tudo sempre). */
+function renderVisiblePreviews() {
+    if (!editorState.musicXML || !renderedPreviewIds.size) return;
+
+    markPreviewRefs
+        .filter(ref => renderedPreviewIds.has(ref.getMark().id))
+        .forEach(ref => renderMarkPreview(ref.card, ref.getMark()));
+}
+
 /* ── SEÇÕES ──────────────────────────────────────────────────── */
 
 function renderSections() {
     const container = document.getElementById('sections-list');
     if (!container) return;
 
+    // Libera as instâncias OSMD dos cards de prévia antes de descartar o DOM antigo
+    container.querySelectorAll('[data-render-target]').forEach(el => destroyInstance(el));
+
     container.innerHTML = '';
+    markPreviewRefs = [];
+
     editorState.sections.forEach((section, sIdx) => {
         container.appendChild(buildSectionItem(section, sIdx));
     });
+
+    // Restaura (sem forçar tudo) apenas as prévias que já estavam ativas
+    renderVisiblePreviews();
 }
 
 function buildSectionItem(section, sIdx) {
@@ -777,6 +926,39 @@ function buildMarkItem(mark, sIdx, mIdx) {
             : ['A','B','C','D','E','F','G','H','I','J','K','L'][parseInt(next.replace('g', ''), 10) - 1] || '';
         colorBtn.textContent = nextLetter;
         colorBtn.title = `Clique para trocar o groove (${nextLetter})`;
+
+        // Mantém a cor do card de prévia sincronizada com o groove atual
+        const nextColorClass = next === 'nd' ? 'nnd' : 'n' + next.replace('g', '');
+        previewCard.className =
+            `mark-preview-card ${nextColorClass}` + (previewCard.classList.contains('has-content') ? ' has-content' : '');
+    });
+
+    // ── Card de prévia do compasso (clicável, entre a letra e os campos de compasso) ──
+    const previewColorClass = mark.groove === 'nd' ? 'nnd' : 'n' + mark.groove.replace('g', '');
+    const previewCard = document.createElement('div');
+    previewCard.className = `mark-preview-card ${previewColorClass}`;
+    previewCard.dataset.renderTarget = 'true';
+    previewCard.title = 'Clique para gerar/atualizar a prévia deste compasso';
+    previewCard.innerHTML = `
+        <div class="mark-preview-placeholder">
+            <svg class="mark-preview-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.2"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/>
+                <circle cx="12" cy="12" r="3"/>
+            </svg>
+            <span>Prévia</span>
+        </div>`;
+
+    previewCard.addEventListener('click', () => {
+        const currentMark = editorState.sections[sIdx].marks[mIdx];
+        renderedPreviewIds.add(currentMark.id);
+        renderMarkPreview(previewCard, currentMark);
+    });
+
+    markPreviewRefs.push({
+        card:    previewCard,
+        getMark: () => editorState.sections[sIdx].marks[mIdx],
     });
 
     // ── Textarea de letra ──
@@ -851,6 +1033,16 @@ function buildMarkItem(mark, sIdx, mIdx) {
             parseInt(e.target.value, 10) || null;
     });
 
+    // Ao confirmar a alteração (blur/change), atualiza a prévia se ela já estava ativa
+    [measureStart, measureEnd].forEach(input => {
+        input.addEventListener('change', () => {
+            const currentMark = editorState.sections[sIdx].marks[mIdx];
+            if (renderedPreviewIds.has(currentMark.id)) {
+                renderMarkPreview(previewCard, currentMark);
+            }
+        });
+    });
+
     measureWrap.appendChild(measureStart);
     measureWrap.appendChild(measureLabel);
     measureWrap.appendChild(measureEnd);
@@ -894,7 +1086,13 @@ function buildMarkItem(mark, sIdx, mIdx) {
 
     item.appendChild(dragHandle);
     item.appendChild(colorBtn);
-    item.appendChild(textarea);
+
+    const lyricPreviewWrap = document.createElement('div');
+    lyricPreviewWrap.className = 'mark-lyric-preview-wrap';
+    lyricPreviewWrap.appendChild(textarea);
+    lyricPreviewWrap.appendChild(previewCard);
+    item.appendChild(lyricPreviewWrap);
+
     item.appendChild(measureWrap);
     item.appendChild(dupMarkBtn); // Adicionado o botão de duplicar trecho
     item.appendChild(removeBtn);

@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Caveat:wght@600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.8.9/build/opensheetmusicdisplay.min.js" crossorigin="anonymous"></script>
 </head>
 <body class="editor-page">
     <div class="editor-layout">
@@ -109,15 +110,27 @@
             <div class="editor-main">
                 <div class="sections-header">
                     <div class="editor-card-title">Seções e marcações</div>
-                    <button id="btn-add-section" class="btn-add-section">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                             stroke="currentColor" stroke-width="2.5"
-                             stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="12" y1="5" x2="12" y2="19"/>
-                            <line x1="5"  y1="12" x2="19" y2="12"/>
-                        </svg>
-                        Adicionar seção
-                    </button>
+                    <div class="sections-header-actions">
+                        <button id="btn-preview-all" class="btn-preview-all" type="button"
+                                title="Renderizar a prévia de todos os compassos">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="2.2"
+                                 stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                            Prévia dos compassos
+                        </button>
+                        <button id="btn-add-section" class="btn-add-section">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="2.5"
+                                 stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="12" y1="5" x2="12" y2="19"/>
+                                <line x1="5"  y1="12" x2="19" y2="12"/>
+                            </svg>
+                            Adicionar seção
+                        </button>
+                    </div>
                 </div>
                 <div id="sections-list" class="sections-list">
                     <!-- Seções serão renderizadas aqui -->
