@@ -570,6 +570,11 @@ a {
     color: rgb(220, 38, 38);
 }
 
+.icon-btn.active {
+    background: var(--bg);
+    color: var(--text-primary);
+}
+
 /* EDITOR PAGE */
 .editor-page {
     min-height: 100vh;
@@ -906,10 +911,9 @@ a {
 }
 
 .mark-item {
-    display: grid;
-    grid-template-columns: 24px 24px 1fr auto auto auto;
+    display: flex;
+    align-items: flex-start;
     gap: 8px;
-    align-items: start;
     padding: 8px 0;
     border-top: 1px solid var(--border);
     transition: transform 0.2s ease-in-out;
@@ -923,6 +927,15 @@ a {
 .mark-item:first-child {
     border-top: none;
     padding-top: 0;
+}
+
+.mark-left-controls,
+.mark-right-controls {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 8px;
+    flex-shrink: 0;
 }
 
 .mark-item .drag-handle {
@@ -1025,6 +1038,77 @@ a {
     border-color: rgb(var(--c12));
 }
 
+.mark-item .mark-measure-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: center;
+    justify-content: center;
+    padding-top: 8px;
+}
+
+.mark-item .mark-measure-input {
+    width: 56px;
+    font-family: inherit;
+    font-size: 0.78rem;
+    text-align: center;
+    background: var(--bg);
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 6px;
+    outline: none;
+    color: var(--text-primary);
+}
+
+.mark-item .mark-measure-sep {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+}
+
+.mark-item .mark-dup-btn,
+.mark-item .mark-remove-btn {
+    align-self: start;
+    margin-top: 9px;
+}
+
+/* ── LAYOUT COMPACTO (letra/groove empilhados, igual ao modo de coluna única do visualizador) ── */
+
+.sections-list.compact-layout .mark-item .mark-left-controls,
+.sections-list.compact-layout .mark-item .mark-right-controls {
+    flex-direction: column;
+}
+
+.sections-list.compact-layout .mark-item .mark-lyric-preview-wrap {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    row-gap: 8px;
+    margin-top: 0;
+}
+
+.sections-list.compact-layout .mark-item .mark-preview-card {
+    min-height: 72px;
+}
+
+.sections-list.compact-layout .mark-item .mark-right-controls .mark-measure-wrap {
+    order: 3;
+    padding-top: 4px;
+}
+
+.sections-list.compact-layout .mark-item .mark-right-controls .mark-dup-btn {
+    order: 1;
+    margin-top: 0;
+}
+
+.sections-list.compact-layout .mark-item .mark-right-controls .mark-remove-btn {
+    order: 2;
+    margin-top: 0;
+}
+
+.sections-list.compact-layout .mark-item .mark-measure-input {
+    width: 30px;
+    padding: 4px 2px;
+}
+
 .mark-textarea {
     width: 100%;
     min-width: 0;
@@ -1057,6 +1141,7 @@ a {
     column-gap: 10px;
     align-items: stretch;
     margin-top: 9px; /* alinha o topo com o botão de cor, compassos, etc. */
+    flex: 1 1 0%;
     min-width: 0;
 }
 

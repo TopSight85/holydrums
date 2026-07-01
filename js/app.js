@@ -787,6 +787,36 @@ function bindEditorEvents() {
 
     document.getElementById('btn-preview-all')
         ?.addEventListener('click', handlePreviewAll);
+
+    // ── Alternar layout dos trechos (letra/groove lado a lado ↔ empilhados) ──
+    const sectionsList = document.getElementById('sections-list');
+    const btnLayout = document.getElementById('btn-layout');
+    if (btnLayout && sectionsList) {
+        const applyLayout = compact => {
+            sectionsList.classList.toggle('compact-layout', compact);
+            btnLayout.classList.toggle('active', compact);
+        };
+
+        applyLayout(localStorage.getItem('holydrums_editor_layout') === 'compact');
+
+        btnLayout.addEventListener('click', () => {
+            const isCompact = !sectionsList.classList.contains('compact-layout');
+            localStorage.setItem('holydrums_editor_layout', isCompact ? 'compact' : 'default');
+            applyLayout(isCompact);
+        });
+    }
+
+    // ── Botão Fullscreen ──
+    document.getElementById('btn-fullscreen')
+        ?.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.warn(`Erro ao ativar tela cheia: ${err.message}`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        });
 }
 
 async function handlePreviewAll() {
@@ -1070,7 +1100,6 @@ function buildMarkItem(mark, sIdx, mIdx) {
     item.dataset.sIdx  = sIdx; // Índice da seção pai
     item.dataset.mIdx  = mIdx; // Índice do mark
     item.draggable     = true; // Habilita drag para o trecho
-    item.style.cssText = 'grid-template-columns: 24px 24px 1fr auto auto auto; gap: 8px;';
 
     const dragHandle = document.createElement('span');
     dragHandle.className = 'drag-handle';
@@ -1162,47 +1191,27 @@ function buildMarkItem(mark, sIdx, mIdx) {
 
     // ── Inputs de compasso ──
     const measureWrap = document.createElement('div');
-    measureWrap.style.cssText = `
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        align-items: center;
-        justify-content: center;
-        padding-top: 8px;
-    `;
-
-    const inputStyle = `
-        width: 56px;
-        font-family: inherit;
-        font-size: 0.78rem;
-        text-align: center;
-        background: var(--bg);
-        border: 1.5px solid var(--border);
-        border-radius: 6px;
-        padding: 4px 6px;
-        outline: none;
-        color: var(--text-primary);
-    `;
+    measureWrap.className = 'mark-measure-wrap';
 
     const measureStart = document.createElement('input');
-    measureStart.type          = 'number';
-    measureStart.min           = '1';
-    measureStart.placeholder   = 'C.ini';
-    measureStart.title         = 'Compasso inicial';
-    measureStart.value         = mark.measureStart ?? '';
-    measureStart.style.cssText = inputStyle;
+    measureStart.type        = 'number';
+    measureStart.min         = '1';
+    measureStart.placeholder = 'C.ini';
+    measureStart.title       = 'Compasso inicial';
+    measureStart.value       = mark.measureStart ?? '';
+    measureStart.className   = 'mark-measure-input';
 
     const measureEnd = document.createElement('input');
-    measureEnd.type          = 'number';
-    measureEnd.min           = '1';
-    measureEnd.placeholder   = 'C.fim';
-    measureEnd.title         = 'Compasso final';
-    measureEnd.value         = mark.measureEnd ?? '';
-    measureEnd.style.cssText = inputStyle;
+    measureEnd.type        = 'number';
+    measureEnd.min         = '1';
+    measureEnd.placeholder = 'C.fim';
+    measureEnd.title       = 'Compasso final';
+    measureEnd.value       = mark.measureEnd ?? '';
+    measureEnd.className   = 'mark-measure-input';
 
     const measureLabel = document.createElement('span');
-    measureLabel.textContent   = '↕';
-    measureLabel.style.cssText = 'font-size: 0.65rem; color: var(--text-muted);';
+    measureLabel.textContent = '↕';
+    measureLabel.className   = 'mark-measure-sep';
 
     measureStart.addEventListener('input', e => {
         editorState.sections[sIdx].marks[mIdx].measureStart =
@@ -1230,10 +1239,9 @@ function buildMarkItem(mark, sIdx, mIdx) {
 
     // ── Botão duplicar trecho ──
     const dupMarkBtn = document.createElement('button');
-    dupMarkBtn.className     = 'icon-btn';
-    dupMarkBtn.title         = 'Duplicar trecho';
-    dupMarkBtn.style.cssText = 'align-self: start; margin-top: 9px;';
-    dupMarkBtn.innerHTML     = `
+    dupMarkBtn.className = 'icon-btn mark-dup-btn';
+    dupMarkBtn.title     = 'Duplicar trecho';
+    dupMarkBtn.innerHTML = `
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
              stroke="currentColor" stroke-width="2.2"
              stroke-linecap="round" stroke-linejoin="round">
@@ -1249,10 +1257,9 @@ function buildMarkItem(mark, sIdx, mIdx) {
 
     // ── Botão remover trecho ──
     const removeBtn = document.createElement('button');
-    removeBtn.className     = 'icon-btn danger';
-    removeBtn.title         = 'Remover trecho';
-    removeBtn.style.cssText = 'align-self: start; margin-top: 9px;';
-    removeBtn.innerHTML     = `
+    removeBtn.className = 'icon-btn danger mark-remove-btn';
+    removeBtn.title     = 'Remover trecho';
+    removeBtn.innerHTML = `
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
              stroke="currentColor" stroke-width="2.2"
              stroke-linecap="round" stroke-linejoin="round">
@@ -1265,8 +1272,11 @@ function buildMarkItem(mark, sIdx, mIdx) {
         renderSections();
     });
 
-    item.appendChild(dragHandle);
-    item.appendChild(colorBtn);
+    const leftControls = document.createElement('div');
+    leftControls.className = 'mark-left-controls';
+    leftControls.appendChild(dragHandle);
+    leftControls.appendChild(colorBtn);
+    item.appendChild(leftControls);
 
     const lyricPreviewWrap = document.createElement('div');
     lyricPreviewWrap.className = 'mark-lyric-preview-wrap';
@@ -1274,9 +1284,12 @@ function buildMarkItem(mark, sIdx, mIdx) {
     lyricPreviewWrap.appendChild(previewCard);
     item.appendChild(lyricPreviewWrap);
 
-    item.appendChild(measureWrap);
-    item.appendChild(dupMarkBtn); // Adicionado o botão de duplicar trecho
-    item.appendChild(removeBtn);
+    const rightControls = document.createElement('div');
+    rightControls.className = 'mark-right-controls';
+    rightControls.appendChild(measureWrap);
+    rightControls.appendChild(dupMarkBtn);
+    rightControls.appendChild(removeBtn);
+    item.appendChild(rightControls);
 
     return item;
 }
