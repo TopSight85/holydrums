@@ -740,18 +740,43 @@ function buildMarkItem(mark, sIdx, mIdx) {
     item.dataset.sIdx  = sIdx; // Índice da seção pai
     item.dataset.mIdx  = mIdx; // Índice do mark
     item.draggable     = true; // Habilita drag para o trecho
-    item.style.cssText = 'grid-template-columns: 24px 1fr auto auto auto; gap: 8px;';
+    item.style.cssText = 'grid-template-columns: 24px 24px 1fr auto auto auto; gap: 8px;';
+
+    const dragHandle = document.createElement('span');
+    dragHandle.className = 'drag-handle';
+    dragHandle.title = 'Arrastar trecho';
+    dragHandle.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+            <line x1="8"  y1="6"  x2="21" y2="6"/>
+            <line x1="8"  y1="12" x2="21" y2="12"/>
+            <line x1="8"  y1="18" x2="21" y2="18"/>
+            <line x1="3"  y1="6"  x2="3.01" y2="6"/>
+            <line x1="3"  y1="12" x2="3.01" y2="12"/>
+            <line x1="3"  y1="18" x2="3.01" y2="18"/>
+        </svg>`;
+
+    const grooveLetter = mark.groove === 'nd'
+        ? 'ND'
+        : ['A','B','C','D','E','F','G','H','I','J','K','L'][parseInt(mark.groove.replace('g', ''), 10) - 1] || '';
 
     // ── Botão de cor/groove ──
     const colorBtn = document.createElement('button');
     colorBtn.className = `mark-color-btn ${mark.groove}`;
-    colorBtn.title     = 'Clique para trocar o groove';
+    colorBtn.title     = `Clique para trocar o groove (${grooveLetter})`;
+    colorBtn.textContent = grooveLetter;
 
     colorBtn.addEventListener('click', () => {
         const idx  = GROOVES.indexOf(mark.groove);
         const next = GROOVES[(idx + 1) % GROOVES.length];
         editorState.sections[sIdx].marks[mIdx].groove = next;
         colorBtn.className = `mark-color-btn ${next}`;
+        const nextLetter = next === 'nd'
+            ? 'ND'
+            : ['A','B','C','D','E','F','G','H','I','J','K','L'][parseInt(next.replace('g', ''), 10) - 1] || '';
+        colorBtn.textContent = nextLetter;
+        colorBtn.title = `Clique para trocar o groove (${nextLetter})`;
     });
 
     // ── Textarea de letra ──
@@ -867,6 +892,7 @@ function buildMarkItem(mark, sIdx, mIdx) {
         renderSections();
     });
 
+    item.appendChild(dragHandle);
     item.appendChild(colorBtn);
     item.appendChild(textarea);
     item.appendChild(measureWrap);
@@ -901,35 +927,67 @@ function setupDragAndDrop() {
         }
     });
 
+    // Drag move: handle both sections and marks; allow moving marks across sections
     sectionsList.addEventListener('dragover', e => {
         e.preventDefault();
         if (!draggedItem) return;
 
-        const target = e.target.closest('.section-item, .mark-item');
-        if (!target || target === draggedItem.el) return;
+        const targetMark = e.target.closest('.mark-item');
+        const targetMarksList = e.target.closest('.marks-list');
+        const targetSection = e.target.closest('.section-item');
 
-        const bounding = target.getBoundingClientRect();
-        const offset   = bounding.y + (bounding.height / 2);
+        // Move sections as before
+        if (draggedItem.type === 'section' && targetSection) {
+            const bounding = targetSection.getBoundingClientRect();
+            const offset   = bounding.y + (bounding.height / 2);
+            if (e.clientY - offset > 0) targetSection.after(draggedItem.el);
+            else targetSection.before(draggedItem.el);
+            return;
+        }
 
-        if (draggedItem.type === 'section' && target.classList.contains('section-item')) {
-            if (e.clientY - offset > 0) {
-                target.after(draggedItem.el);
-            } else {
-                target.before(draggedItem.el);
+        // Move marks: allow between sections
+        if (draggedItem.type === 'mark') {
+            if (targetMark && targetMark !== draggedItem.el) {
+                const bounding = targetMark.getBoundingClientRect();
+                const offset   = bounding.y + (bounding.height / 2);
+                if (e.clientY - offset > 0) targetMark.after(draggedItem.el);
+                else targetMark.before(draggedItem.el);
+                return;
             }
-        } else if (draggedItem.type === 'mark' && target.classList.contains('mark-item')) {
-            // Apenas permite reordenar marks dentro da mesma seção
-            if (draggedItem.sIdx === parseInt(target.dataset.sIdx, 10)) {
-                if (e.clientY - offset > 0) {
-                    target.after(draggedItem.el);
-                } else {
-                    target.before(draggedItem.el);
+
+            if (targetMarksList) {
+                // Try to insert before the first child whose midpoint is below the cursor
+                let inserted = false;
+                for (const child of Array.from(targetMarksList.children)) {
+                    if (!child.classList.contains('mark-item')) continue;
+                    const rect = child.getBoundingClientRect();
+                    if (e.clientY < rect.top + rect.height / 2) {
+                        targetMarksList.insertBefore(draggedItem.el, child);
+                        inserted = true;
+                        break;
+                    }
                 }
+                if (!inserted) targetMarksList.appendChild(draggedItem.el);
+                return;
             }
         }
     });
 
-    sectionsList.addEventListener('dragend', e => {
+    // Visual feedback: highlight marks-list targets
+    sectionsList.addEventListener('dragenter', e => {
+        const ml = e.target.closest('.marks-list');
+        if (ml) ml.classList.add('drag-over');
+    });
+    sectionsList.addEventListener('dragleave', e => {
+        const ml = e.target.closest('.marks-list');
+        if (ml) ml.classList.remove('drag-over');
+    });
+
+    // Drop finalization
+    sectionsList.addEventListener('drop', e => {
+        e.preventDefault();
+        // remove any drag-over visuals
+        document.querySelectorAll('.marks-list.drag-over').forEach(el => el.classList.remove('drag-over'));
         if (draggedItem) {
             draggedItem.el.classList.remove('dragging');
             draggedItem = null;
@@ -937,15 +995,13 @@ function setupDragAndDrop() {
         }
     });
 
-    // Adiciona dragover para as listas de marks para permitir soltar em listas vazias
-    sectionsList.addEventListener('dragover', e => {
-        e.preventDefault();
-        if (!draggedItem || draggedItem.type !== 'mark') return;
-
-        const targetList = e.target.closest('.marks-list');
-        if (targetList && targetList.children.length === 0) {
-            // Se a lista de marks estiver vazia, permite soltar
-            targetList.appendChild(draggedItem.el);
+    // dragend fallback
+    sectionsList.addEventListener('dragend', e => {
+        document.querySelectorAll('.marks-list.drag-over').forEach(el => el.classList.remove('drag-over'));
+        if (draggedItem) {
+            draggedItem.el.classList.remove('dragging');
+            draggedItem = null;
+            updateOrder();
         }
     });
 }

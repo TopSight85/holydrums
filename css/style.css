@@ -668,9 +668,15 @@ a {
     margin-bottom: 12px;
 }
 
+.marks-list.drag-over {
+    background: rgba(var(--cnd), 0.04);
+    border-radius: 8px;
+    padding: 6px;
+}
+
 .mark-item {
     display: grid;
-    grid-template-columns: 24px 1fr auto auto auto;
+    grid-template-columns: 24px 24px 1fr auto auto auto;
     gap: 8px;
     align-items: start;
     padding: 8px 0;
@@ -688,6 +694,24 @@ a {
     padding-top: 0;
 }
 
+.mark-item .drag-handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: grab;
+    flex-shrink: 0;
+    margin-top: 9px;
+}
+
+.mark-item .drag-handle:hover {
+    color: var(--text-primary);
+}
+
 .mark-color-btn {
     width: 24px;
     height: 24px;
@@ -697,6 +721,12 @@ a {
     cursor: pointer;
     flex-shrink: 0;
     margin-top: 9px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: currentColor;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .mark-color-btn.nd {
