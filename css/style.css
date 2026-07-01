@@ -243,7 +243,6 @@ a {
     border: 1.5px solid var(--border);
     box-shadow: var(--shadow-xs);
     overflow: hidden;
-    cursor: pointer;
     transition: box-shadow .15s;
 }
 
@@ -346,7 +345,206 @@ a {
     margin-bottom: 4px;
 }
 
-/* ICON BUTTONS */
+/* MODAL (genérico) */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(24, 24, 27, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    z-index: 100;
+}
+
+.modal {
+    background: var(--surface);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    width: 100%;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.modal-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 14px 18px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+/* SETLIST PICKER */
+.setlist-picker-modal {
+    max-width: 720px;
+}
+
+.picker-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    overflow: hidden;
+    min-height: 0;
+    flex: 1;
+}
+
+.picker-col {
+    display: flex;
+    flex-direction: column;
+    padding: 14px 16px;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.picker-col:first-child {
+    border-right: 1px solid var(--border);
+}
+
+.picker-col-title {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    flex-shrink: 0;
+}
+
+.picker-search {
+    margin-bottom: 10px;
+    flex-shrink: 0;
+}
+
+.picker-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.picker-empty {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-align: center;
+    padding: 24px 8px;
+    line-height: 1.6;
+}
+
+.picker-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1.5px solid var(--border);
+    background: var(--bg);
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+}
+
+.picker-item:hover {
+    border-color: var(--text-muted);
+}
+
+.picker-item-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.picker-item-title {
+    font-size: 0.85rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.picker-item-artist {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.picker-add-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.picker-item:hover .picker-add-btn {
+    color: var(--text-primary);
+}
+
+.picker-selected-item {
+    cursor: default;
+    background: var(--surface);
+}
+
+.picker-selected-item.dragging {
+    opacity: 0.5;
+}
+
+.picker-selected-item .drag-handle {
+    cursor: grab;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    display: inline-flex;
+}
+
+.picker-order-num {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.picker-remove-btn {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+    .picker-body {
+        grid-template-columns: 1fr;
+        overflow-y: auto;
+    }
+    .picker-col:first-child {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+    .picker-list {
+        max-height: 220px;
+    }
+}
+
 .icon-btn {
     display: inline-flex;
     align-items: center;

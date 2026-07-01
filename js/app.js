@@ -422,6 +422,14 @@ function buildSetlistCard(setlist) {
             <div class="setlist-card-title">${escapeHTML(setlist.name)}</div>
             <div style="display:flex;align-items:center;gap:8px">
                 <span class="setlist-card-date">${dateLabel}</span>
+                <button class="icon-btn" data-action="add-songs" title="Adicionar músicas">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2.3"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"/>
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                </button>
                 <button class="icon-btn" data-action="play" title="Executar setlist">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                          stroke="currentColor" stroke-width="2.2"
@@ -454,8 +462,7 @@ function buildSetlistCard(setlist) {
         renderSetlistList();
     });
 
-    card.addEventListener('click', e => {
-        if (e.target.closest('[data-action]')) return;
+    card.querySelector('[data-action="add-songs"]')?.addEventListener('click', () => {
         openSetlistEditor(setlist.id);
     });
 
@@ -474,28 +481,202 @@ function openSetlistEditor(setlistId) {
     const resolved = getSetlistWithSongs(setlistId);
     if (!resolved) return;
 
-    const allSongs   = getAllSongs().sort((a, b) => a.title.localeCompare(b.title));
-    const currentIds = resolved.songIds;
+    const allSongs = getAllSongs().sort((a, b) => a.title.localeCompare(b.title));
+    const songById = new Map(allSongs.map(s => [s.id, s]));
 
-    const options = allSongs.map((s, i) =>
-        `${i + 1}. [${currentIds.includes(s.id) ? 'X' : ' '}] ${s.title}`
-    ).join('\n');
+    // Estado local — só é persistido se o usuário clicar em "Salvar"
+    let selectedIds = resolved.songIds.filter(id => songById.has(id));
+    let searchTerm  = '';
+    let draggedId   = null;
 
-    const input = prompt(
-        `Setlist: ${resolved.name}\n\n` +
-        `Digite os números das músicas separados por vírgula\n` +
-        `(na ordem em que devem tocar):\n\n${options}`
-    );
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+        <div class="modal setlist-picker-modal">
+            <div class="modal-header">
+                <div class="modal-title">${escapeHTML(resolved.name)}</div>
+                <button class="icon-btn" data-action="close" title="Fechar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2.2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="picker-body">
+                <div class="picker-col">
+                    <div class="picker-col-title">Todas as músicas</div>
+                    <input type="text" class="field-input picker-search" placeholder="Buscar música...">
+                    <div class="picker-list" id="picker-available"></div>
+                </div>
+                <div class="picker-col">
+                    <div class="picker-col-title">Na setlist (<span id="picker-count">0</span>)</div>
+                    <div class="picker-list" id="picker-selected"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="topbar-btn secondary" data-action="close">Cancelar</button>
+                <button class="topbar-btn primary" data-action="save">Salvar setlist</button>
+            </div>
+        </div>`;
 
-    if (input === null) return;
+    document.body.appendChild(overlay);
 
-    const indices  = input.split(',').map(n => parseInt(n.trim(), 10) - 1);
-    const selected = indices
-        .filter(i => i >= 0 && i < allSongs.length)
-        .map(i => allSongs[i].id);
+    const availableEl = overlay.querySelector('#picker-available');
+    const selectedEl  = overlay.querySelector('#picker-selected');
+    const countEl     = overlay.querySelector('#picker-count');
+    const searchEl    = overlay.querySelector('.picker-search');
 
-    reorderSetlist(setlistId, selected);
-    renderSetlistList();
+    function renderAvailable() {
+        const term = searchTerm.trim().toLowerCase();
+        const items = allSongs.filter(s => {
+            if (selectedIds.includes(s.id)) return false;
+            if (!term) return true;
+            return s.title.toLowerCase().includes(term) ||
+                   (s.artist || '').toLowerCase().includes(term);
+        });
+
+        if (!items.length) {
+            availableEl.innerHTML = `<div class="picker-empty">Nenhuma música encontrada</div>`;
+            return;
+        }
+
+        availableEl.innerHTML = items.map(s => `
+            <div class="picker-item" data-id="${s.id}">
+                <div class="picker-item-info">
+                    <div class="picker-item-title">${escapeHTML(s.title)}</div>
+                    ${s.artist ? `<div class="picker-item-artist">${escapeHTML(s.artist)}</div>` : ''}
+                </div>
+                <span class="picker-add-btn" title="Adicionar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2.3"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"/>
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                </span>
+            </div>`).join('');
+
+        availableEl.querySelectorAll('.picker-item').forEach(el => {
+            el.addEventListener('click', () => {
+                const id = el.dataset.id;
+                selectedIds.push(id);
+                renderAvailable();
+                renderSelected();
+            });
+        });
+    }
+
+    function renderSelected() {
+        countEl.textContent = selectedIds.length;
+
+        if (!selectedIds.length) {
+            selectedEl.innerHTML = `<div class="picker-empty">Clique em uma música à esquerda para adicionar</div>`;
+            return;
+        }
+
+        selectedEl.innerHTML = selectedIds.map((id, idx) => {
+            const s = songById.get(id);
+            if (!s) return '';
+            return `
+            <div class="picker-item picker-selected-item" draggable="true" data-id="${id}">
+                <span class="drag-handle" title="Arrastar para reordenar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="9" cy="6" r="1.2"/><circle cx="15" cy="6" r="1.2"/>
+                        <circle cx="9" cy="12" r="1.2"/><circle cx="15" cy="12" r="1.2"/>
+                        <circle cx="9" cy="18" r="1.2"/><circle cx="15" cy="18" r="1.2"/>
+                    </svg>
+                </span>
+                <span class="picker-order-num">${idx + 1}</span>
+                <div class="picker-item-info">
+                    <div class="picker-item-title">${escapeHTML(s.title)}</div>
+                    ${s.artist ? `<div class="picker-item-artist">${escapeHTML(s.artist)}</div>` : ''}
+                </div>
+                <button class="icon-btn danger picker-remove-btn" title="Remover">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2.2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>`;
+        }).join('');
+
+        selectedEl.querySelectorAll('.picker-remove-btn').forEach(btn => {
+            btn.addEventListener('click', e => {
+                const id = e.currentTarget.closest('.picker-item').dataset.id;
+                selectedIds = selectedIds.filter(sid => sid !== id);
+                renderAvailable();
+                renderSelected();
+            });
+        });
+
+        selectedEl.querySelectorAll('.picker-selected-item').forEach(el => {
+            el.addEventListener('dragstart', e => {
+                draggedId = el.dataset.id;
+                el.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            el.addEventListener('dragend', () => {
+                el.classList.remove('dragging');
+                draggedId = null;
+            });
+        });
+    }
+
+    selectedEl.addEventListener('dragover', e => {
+        e.preventDefault();
+        if (!draggedId) return;
+
+        const draggedEl = selectedEl.querySelector(`.picker-selected-item[data-id="${draggedId}"]`);
+        const target = e.target.closest('.picker-selected-item');
+        if (!draggedEl || !target || target === draggedEl) return;
+
+        const rect   = target.getBoundingClientRect();
+        const before = e.clientY - rect.top < rect.height / 2;
+        target.parentNode.insertBefore(draggedEl, before ? target : target.nextSibling);
+    });
+
+    selectedEl.addEventListener('drop', e => {
+        e.preventDefault();
+        if (!draggedId) return;
+        selectedIds = Array.from(selectedEl.querySelectorAll('.picker-selected-item'))
+            .map(el => el.dataset.id);
+        draggedId = null;
+        renderSelected();
+    });
+
+    searchEl.addEventListener('input', e => {
+        searchTerm = e.target.value;
+        renderAvailable();
+    });
+
+    function close() {
+        overlay.remove();
+        document.removeEventListener('keydown', onKeydown);
+    }
+
+    function onKeydown(e) {
+        if (e.key === 'Escape') close();
+    }
+
+    overlay.addEventListener('click', e => {
+        if (e.target === overlay) close();
+    });
+    overlay.querySelectorAll('[data-action="close"]').forEach(btn => {
+        btn.addEventListener('click', close);
+    });
+    overlay.querySelector('[data-action="save"]').addEventListener('click', () => {
+        reorderSetlist(setlistId, selectedIds);
+        renderSetlistList();
+        close();
+    });
+    document.addEventListener('keydown', onKeydown);
+
+    renderAvailable();
+    renderSelected();
 }
 
 /* ════════════════════════════════════════════════════════════════
