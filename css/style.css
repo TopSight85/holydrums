@@ -1280,7 +1280,7 @@ mark.nd {
     /* evita centralizar e cortar topo/baixo */
     justify-content: flex-start;
     color: var(--text-muted);
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     font-style: italic;
     position: relative;
     overflow: visible;
