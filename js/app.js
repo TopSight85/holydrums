@@ -933,8 +933,12 @@ function setupDragAndDrop() {
         if (!draggedItem) return;
 
         const targetMark = e.target.closest('.mark-item');
-        const targetMarksList = e.target.closest('.marks-list');
         const targetSection = e.target.closest('.section-item');
+        let targetMarksList = e.target.closest('.marks-list');
+
+        if (!targetMarksList && targetSection) {
+            targetMarksList = targetSection.querySelector('.marks-list');
+        }
 
         // Move sections as before
         if (draggedItem.type === 'section' && targetSection) {
@@ -988,6 +992,18 @@ function setupDragAndDrop() {
         e.preventDefault();
         // remove any drag-over visuals
         document.querySelectorAll('.marks-list.drag-over').forEach(el => el.classList.remove('drag-over'));
+
+        if (draggedItem && draggedItem.type === 'mark') {
+            let dropMarksList = e.target.closest('.marks-list');
+            const dropSection = e.target.closest('.section-item');
+            if (!dropMarksList && dropSection) {
+                dropMarksList = dropSection.querySelector('.marks-list');
+            }
+            if (dropMarksList && draggedItem.el.parentNode !== dropMarksList) {
+                dropMarksList.appendChild(draggedItem.el);
+            }
+        }
+
         if (draggedItem) {
             draggedItem.el.classList.remove('dragging');
             draggedItem = null;
