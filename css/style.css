@@ -1301,6 +1301,25 @@ mark.nd {
     display: none !important;
 }
 
+.measure-msg {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    /* ajuste aqui */
+    font-style: italic;
+}
+
+.measure-fallback {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    line-height: 1.8;
+    font-style: italic;
+}
+
+.measure-fallback-sub {
+    font-size: 0.68rem;
+}
+
 /* Backup bar com grupos */
 .backup-bar {
     display: flex;

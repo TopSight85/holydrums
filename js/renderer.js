@@ -5,18 +5,18 @@ function getOSMD() {
 }
 
 const DEFAULT_OPTIONS = {
-    autoResize:                      false,
-    backend:                         'svg',
-    drawTitle:                       false,
-    drawComposer:                    false,
-    drawCredits:                     false,
-    drawPartNames:                   false,
-    drawPartAbbreviations:           false,
-    drawMeasureNumbers:              false,
-    drawTimeSignatures:              true,
-    drawKeySignatures:               false,
-    drawDefaultClefAtBegin:          false,
-    followCursor:                    false,
+    autoResize: false,
+    backend: 'svg',
+    drawTitle: false,
+    drawComposer: false,
+    drawCredits: false,
+    drawPartNames: false,
+    drawPartAbbreviations: false,
+    drawMeasureNumbers: false,
+    drawTimeSignatures: true,
+    drawKeySignatures: false,
+    drawDefaultClefAtBegin: false,
+    followCursor: false,
     setWantedNumberOfMeasuresPerRow: 1,
 };
 
@@ -48,7 +48,7 @@ export async function renderMeasure(container, measure, xmlString, options = {})
     try {
         await osmd.load(xml);
         osmd.render();
-		hideClefsInSVG(container);
+        hideClefsInSVG(container);
         instances.set(container, osmd);
         scaleSVG(container);
     } catch (err) {
@@ -72,7 +72,7 @@ export async function renderMeasures(container, measures, xmlString, options = {
     let xml;
     try {
         const from = measures[0].number;
-        const to   = measures[measures.length - 1].number;
+        const to = measures[measures.length - 1].number;
         xml = extractMeasureRange(xmlString, from, to);
     } catch (err) {
         console.warn('renderer: falha ao extrair faixa de compassos', err);
@@ -92,7 +92,7 @@ export async function renderMeasures(container, measures, xmlString, options = {
     try {
         await osmd.load(xml);
         osmd.render();
-		hideClefsInSVG(container);
+        hideClefsInSVG(container);
         instances.set(container, osmd);
         scaleSVG(container);
     } catch (err) {
@@ -159,7 +159,7 @@ function extractMeasureRange(xmlString, from, to) {
     if (!partList) throw new Error('MusicXML sem part-list.');
 
     const partId = chooseTargetPartId(doc);
-    const part   = getPartById(doc, partId) || doc.querySelector('part');
+    const part = getPartById(doc, partId) || doc.querySelector('part');
     if (!part) throw new Error('MusicXML sem part.');
 
     const measuresInPart = Array.from(part.querySelectorAll(':scope > measure'));
@@ -210,19 +210,19 @@ function extractMeasureRange(xmlString, from, to) {
 
     const newPart = newDoc.importNode(part.cloneNode(false), true);
     targetMeasures.forEach(m => {
-		const newM = newDoc.importNode(m, true);
+        const newM = newDoc.importNode(m, true);
 
-		forceStaffOneOnNotes(newM); // <- adicionar aqui
+        forceStaffOneOnNotes(newM); // <- adicionar aqui
 
-		newM.querySelectorAll('notehead').forEach(nh => {
-			const val = (nh.textContent || '').trim().toLowerCase();
-			if (val === 'ghost' || nh.getAttribute('parentheses') === 'yes') {
-				nh.setAttribute('parentheses', 'yes');
-				if (val === 'ghost') nh.textContent = 'normal';
-			}
-		});
+        newM.querySelectorAll('notehead').forEach(nh => {
+            const val = (nh.textContent || '').trim().toLowerCase();
+            if (val === 'ghost' || nh.getAttribute('parentheses') === 'yes') {
+                nh.setAttribute('parentheses', 'yes');
+                if (val === 'ghost') nh.textContent = 'normal';
+            }
+        });
 
-		newPart.appendChild(newM);
+        newPart.appendChild(newM);
     });
     newRoot.appendChild(newPart);
 
@@ -234,7 +234,7 @@ function chooseTargetPartId(doc) {
     const scoreParts = Array.from(doc.querySelectorAll('part-list > score-part'));
     if (!scoreParts.length) return null;
 
-    let bestId    = null;
+    let bestId = null;
     let bestScore = -1;
 
     for (const sp of scoreParts) {
@@ -290,9 +290,9 @@ function ensureAttributesAtRangeStart(firstTargetMeasure, allMeasuresInPart) {
     // de cada campo relevante (divisions, key, time, clef).
     let accumulated = {
         divisions: null,
-        key:       null,
-        time:      null,
-        clef:      null,
+        key: null,
+        time: null,
+        clef: null,
     };
 
     for (let i = 0; i < allMeasuresInPart.length; i++) {
@@ -303,15 +303,15 @@ function ensureAttributesAtRangeStart(firstTargetMeasure, allMeasuresInPart) {
         const attrs = m.querySelector(':scope > attributes');
         if (!attrs) continue;
 
-        const divEl  = attrs.querySelector(':scope > divisions');
-        const keyEl  = attrs.querySelector(':scope > key');
+        const divEl = attrs.querySelector(':scope > divisions');
+        const keyEl = attrs.querySelector(':scope > key');
         const timeEl = attrs.querySelector(':scope > time');
         const clefEl = attrs.querySelector(':scope > clef');
 
-        if (divEl)  accumulated.divisions = divEl.cloneNode(true);
-        if (keyEl)  accumulated.key       = keyEl.cloneNode(true);
-        if (timeEl) accumulated.time      = timeEl.cloneNode(true);
-        if (clefEl) accumulated.clef      = clefEl.cloneNode(true);
+        if (divEl) accumulated.divisions = divEl.cloneNode(true);
+        if (keyEl) accumulated.key = keyEl.cloneNode(true);
+        if (timeEl) accumulated.time = timeEl.cloneNode(true);
+        if (clefEl) accumulated.clef = clefEl.cloneNode(true);
     }
 
     // Monta um attributes limpo com os dados acumulados na ordem correta do MusicXML
@@ -319,24 +319,24 @@ function ensureAttributesAtRangeStart(firstTargetMeasure, allMeasuresInPart) {
     const newAttrs = doc.createElement('attributes');
 
     if (accumulated.divisions) newAttrs.appendChild(accumulated.divisions);
-    if (accumulated.key)       newAttrs.appendChild(accumulated.key);
-    if (accumulated.time)      newAttrs.appendChild(accumulated.time);
-    if (accumulated.clef)      newAttrs.appendChild(accumulated.clef);
+    if (accumulated.key) newAttrs.appendChild(accumulated.key);
+    if (accumulated.time) newAttrs.appendChild(accumulated.time);
+    if (accumulated.clef) newAttrs.appendChild(accumulated.clef);
 
     // Força 5 linhas explicitamente — sem isso o OSMD renderiza pauta de 1 linha
     // quando encontra notas <unpitched> com clave de percussão.
-	const staffDetails = doc.createElement('staff-details');
-	staffDetails.setAttribute('number', '1');
+    const staffDetails = doc.createElement('staff-details');
+    staffDetails.setAttribute('number', '1');
 
-	const staffType = doc.createElement('staff-type');
-	staffType.textContent = 'regular';
-	staffDetails.appendChild(staffType);
+    const staffType = doc.createElement('staff-type');
+    staffType.textContent = 'regular';
+    staffDetails.appendChild(staffType);
 
-	const staffLines = doc.createElement('staff-lines');
-	staffLines.textContent = '5';
-	staffDetails.appendChild(staffLines);
+    const staffLines = doc.createElement('staff-lines');
+    staffLines.textContent = '5';
+    staffDetails.appendChild(staffLines);
 
-	newAttrs.appendChild(staffDetails);
+    newAttrs.appendChild(staffDetails);
 
     // Remove o attributes antigo (que pode ser só measure-style) e insere o novo
     if (ownAttrs) ownAttrs.remove();
@@ -441,15 +441,14 @@ function scaleSVG(container) {
 
 function renderFallback(container, measure) {
     const noteCount = measure.notes?.filter(n => !n.isChord).length ?? 0;
-    const timeSig   = measure.timeSignature
+    const timeSig = measure.timeSignature
         ? `${measure.timeSignature.beats}/${measure.timeSignature.beatType}`
         : '4/4';
 
     container.innerHTML = `
-        <div style="text-align:center;color:var(--text-muted);
-                    font-size:.75rem;line-height:1.8;font-style:italic">
+        <div class="measure-fallback">
             Compasso ${measure.number}<br>
-            <span style="font-size:.68rem">${timeSig} · ${noteCount} notas</span>
+            <span class="measure-fallback-sub">${timeSig} · ${noteCount} notas</span>
         </div>`;
 }
 
@@ -462,7 +461,7 @@ function forceStaffOneOnNotes(measureEl) {
 
             // Ordem comum: ... <voice> ... <staff> ... <type>
             const voice = note.querySelector(':scope > voice');
-            const type  = note.querySelector(':scope > type');
+            const type = note.querySelector(':scope > type');
 
             if (voice) voice.after(staff);
             else if (type) type.before(staff);

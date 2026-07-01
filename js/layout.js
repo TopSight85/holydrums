@@ -4,29 +4,29 @@ import { renderAll, destroyInstance } from './renderer.js';
 
 /* ── CONSTANTES DE ESTIMATIVA DE ALTURA ──────────────────────── */
 
-const SAFETY_MARGIN         = 32;
+const SAFETY_MARGIN = 32;
 const SECTION_HEADER_HEIGHT = 56;   // padding (24+10) + text (~16) + extra (6)
-const NOTATION_MIN_HEIGHT   = 180;  // measure-card min-height (180) + tag + padding + margin (ajustado para 180px)
-const LYRIC_LINE_HEIGHT     = 30;   // font-size 0.93rem × line-height 2
-const LYRIC_BASE_PADDING    = 30;   // padding vertical do mark + border do lyric-block
-const PAIR_MARGIN           = 14;   // margin-bottom dos blocos
+const NOTATION_MIN_HEIGHT = 180;  // measure-card min-height (180) + tag + padding + margin (ajustado para 180px)
+const LYRIC_LINE_HEIGHT = 30;   // font-size 0.93rem × line-height 2
+const LYRIC_BASE_PADDING = 30;   // padding vertical do mark + border do lyric-block
+const PAIR_MARGIN = 14;   // margin-bottom dos blocos
 
 /* ── ESTADO ──────────────────────────────────────────────────── */
 
-let currentPages   = [];
+let currentPages = [];
 let currentPageIdx = 0;
-let onPageChange   = null;
-let currentScore   = null;
-let currentXML     = null;
+let onPageChange = null;
+let currentScore = null;
+let currentXML = null;
 
 /* ── ENTRADA PRINCIPAL ───────────────────────────────────────── */
 
 export async function buildSheet(contentEl, song, parsedScore) {
     destroyAll(contentEl);
-    currentPages   = [];
+    currentPages = [];
     currentPageIdx = 0;
-    currentScore   = parsedScore;
-    currentXML     = parsedScore?._rawXML ?? null;
+    currentScore = parsedScore;
+    currentXML = parsedScore?._rawXML ?? null;
 
     // Cria descritores leves (sem elementos DOM) com alturas estimadas
     const blocks = buildBlockDescriptors(song, parsedScore);
@@ -48,18 +48,18 @@ function buildBlockDescriptors(song, parsedScore) {
 
     song.sections.forEach(section => {
         blocks.push({
-            type:            'header',
-            name:            section.name,
+            type: 'header',
+            name: section.name,
             estimatedHeight: SECTION_HEADER_HEIGHT,
         });
 
         section.marks.forEach((mark, markIdx) => {
-            const lyricH    = estimateLyricHeight(mark.lyrics);
+            const lyricH = estimateLyricHeight(mark.lyrics);
             const notationH = NOTATION_MIN_HEIGHT;
-            const pairH     = Math.max(lyricH, notationH) + PAIR_MARGIN;
+            const pairH = Math.max(lyricH, notationH) + PAIR_MARGIN;
 
             blocks.push({
-                type:            'pair',
+                type: 'pair',
                 mark,
                 markIdx,
                 estimatedHeight: pairH,
@@ -83,10 +83,10 @@ function paginate(blocks, availableHeight) {
 
     const pages = [];
     let currentPageBlocks = [];
-    let currentHeight     = 0;
+    let currentHeight = 0;
 
     for (let i = 0; i < blocks.length; i++) {
-        const block       = blocks[i];
+        const block = blocks[i];
         const blockHeight = block.estimatedHeight;
 
         // Evita que um header fique sozinho no final da página
@@ -95,7 +95,7 @@ function paginate(blocks, availableHeight) {
             nextBlockHeight = blocks[i + 1].estimatedHeight;
         }
 
-        const wouldOverflow    = currentHeight + blockHeight > availableHeight;
+        const wouldOverflow = currentHeight + blockHeight > availableHeight;
         const headerWouldBeOrphan =
             block.type === 'header' &&
             currentPageBlocks.length > 0 &&
@@ -106,7 +106,7 @@ function paginate(blocks, availableHeight) {
                 pages.push(currentPageBlocks);
             }
             currentPageBlocks = [];
-            currentHeight     = 0;
+            currentHeight = 0;
         }
 
         currentPageBlocks.push(block);
@@ -129,7 +129,7 @@ async function renderPage(contentEl, pageIdx) {
         p.remove();
     });
 
-    const page   = currentPages[pageIdx];
+    const page = currentPages[pageIdx];
     const pageEl = document.createElement('div');
     pageEl.className = 'page active';
 
@@ -170,12 +170,12 @@ async function renderPage(contentEl, pageIdx) {
 }
 
 function collectRenderItems(sheet) {
-    const items   = [];
+    const items = [];
     const targets = sheet.querySelectorAll('[data-render-target]');
 
     targets.forEach(target => {
         const start = parseInt(target.dataset.measureStart, 10);
-        const end   = parseInt(target.dataset.measureEnd,   10);
+        const end = parseInt(target.dataset.measureEnd, 10);
 
         if (!start || !currentScore) return;
 
@@ -213,7 +213,7 @@ function buildLyricEl(mark) {
     let html = escapeHTML(mark.lyrics).replace(/\n/g, '<br>');
     // Converte textos entre colchetes [assim] para a fonte manuscrita vermelha
     html = html.replace(/\[(.*?)\]/g, '<span class="ann">$1</span>');
-    
+
     markEl.innerHTML = html;
 
     el.appendChild(markEl);
@@ -228,19 +228,19 @@ function buildNotationEl(mark, markIdx, parsedScore) {
     const colorClass = mark.groove === 'nd'
         ? 'nnd'
         : 'n' + mark.groove.replace('g', '');
-    card.className      = `measure-card ${colorClass}`.trim();
+    card.className = `measure-card ${colorClass}`.trim();
     card.dataset.markId = mark.id;
 
     const tag = document.createElement('span');
     tag.className = 'measure-tag';
 
     const content = document.createElement('div');
-    content.className            = 'measure-content';
+    content.className = 'measure-content';
     content.dataset.renderTarget = 'true';
 
     if (!parsedScore || !mark.measureStart) {
         content.innerHTML = `
-            <span style="color:var(--text-muted);font-size:.78rem;font-style:italic">
+            <span class="measure-msg">
                 ${mark.groove === 'nd' ? 'Sem bateria' : 'Compasso não definido'}
             </span>`;
         tag.textContent = grooveLabel(mark.groove, markIdx);
@@ -250,20 +250,20 @@ function buildNotationEl(mark, markIdx, parsedScore) {
         return el;
     }
 
-    const start    = mark.measureStart;
-    const end      = mark.measureEnd ?? mark.measureStart;
+    const start = mark.measureStart;
+    const end = mark.measureEnd ?? mark.measureStart;
     const measures = parsedScore.measures.filter(
         m => m.number >= start && m.number <= end
     );
 
     if (!measures.length) {
         content.innerHTML = `
-            <span style="color:var(--text-muted);font-size:.78rem;font-style:italic">
+            <span class="measure-msg">
                 Compassos ${start}–${end} não encontrados
             </span>`;
     } else {
         content.dataset.measureStart = start;
-        content.dataset.measureEnd   = end;
+        content.dataset.measureEnd = end;
         // Container vazio — o OSMD renderizará aqui
     }
 
@@ -296,7 +296,7 @@ export function prevPage(contentEl) {
 }
 
 export function getCurrentPageIdx() { return currentPageIdx; }
-export function getTotalPages()     { return currentPages.length; }
+export function getTotalPages() { return currentPages.length; }
 
 export function onPageChanged(callback) {
     onPageChange = callback;
@@ -315,16 +315,16 @@ function destroyAll(contentEl) {
 
 function grooveLabel(groove, idx) {
     if (groove === 'nd') return 'Sem bateria';
-    const letters = ['A','B','C','D','E','F'];
-    const num     = parseInt(groove.replace('g', ''), 10);
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+    const num = parseInt(groove.replace('g', ''), 10);
     return `Groove ${letters[num - 1] ?? idx + 1}`;
 }
 
 function escapeHTML(str) {
     return String(str ?? '')
-        .replace(/&/g,  '&')
-        .replace(/</g,  '<')
-        .replace(/>/g,  '>')
-        .replace(/"/g,  '&quot;')
-        .replace(/'/g,  '&#39;');
+        .replace(/&/g, '&')
+        .replace(/</g, '<')
+        .replace(/>/g, '>')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
