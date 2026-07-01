@@ -1222,7 +1222,7 @@ mark {
     display: block;
     padding: 6px 10px;
     color: inherit;
-    font-size: 0.75rem;
+    font-size: 0.65rem;
     line-height: 1.6;
     border-left: 3px solid transparent;
 }
@@ -1332,7 +1332,7 @@ mark.g12 {
 }
 
 .measure-tag {
-    font-size: 0.5rem;
+    font-size: 0.45rem;
     font-weight: 600;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -1346,7 +1346,7 @@ mark.g12 {
     /* evita centralizar e cortar topo/baixo */
     justify-content: flex-start;
     color: var(--text-muted);
-    font-size: 0.75rem;
+    font-size: 0.65rem;
     font-style: italic;
     position: relative;
     overflow: visible;
@@ -1369,7 +1369,7 @@ mark.g12 {
 
 .measure-msg {
     color: var(--text-muted);
-    font-size: 0.75rem;
+    font-size: 0.65rem;
     /* ajuste aqui */
     font-style: italic;
 }
@@ -1377,13 +1377,13 @@ mark.g12 {
 .measure-fallback {
     text-align: center;
     color: var(--text-muted);
-    font-size: 0.75rem;
+    font-size: 0.65rem;
     line-height: 1.8;
     font-style: italic;
 }
 
 .measure-fallback-sub {
-    font-size: 0.68rem;
+    font-size: 0.6rem;
 }
 
 /* Backup bar com grupos */
