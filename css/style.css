@@ -1931,8 +1931,11 @@ mark.g12 {
 }
 
 .nnd {
-    border-color: rgba(var(--cnd), .35);
-    background: rgba(var(--cnd), .07);
+    background: none;
+    border: none;
+    box-shadow: none;
+    min-height: 0px;
+
 }
 
 .nnd .measure-tag {

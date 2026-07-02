@@ -909,7 +909,7 @@ async function renderMarkPreview(card, mark) {
 
     if (!mark.measureStart) {
         card.classList.add('has-content');
-        card.innerHTML = '<span class="mark-preview-msg">Sem compasso</span>';
+        card.innerHTML = '<span class="mark-preview-msg">Sem compasso definido</span>';
         return;
     }
 
