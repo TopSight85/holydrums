@@ -1,6 +1,7 @@
 // app.js
 
 import { initDrive, connectDrive, saveBackupToDrive, loadBackupFromDrive, isDriveConnectedPref, setDriveConnectedPref } from './drive.js';
+import { listRepoSongs, fetchRepoSongContent } from './github.js';
 
 import {
     getAllSongs,
@@ -96,6 +97,10 @@ function bindIndexEvents() {
     document.getElementById('import-song-file')
         ?.addEventListener('change', handleImportSongNew);
 
+    // Importar música a partir da pasta /songs do repositório público no GitHub
+    document.getElementById('btn-import-song-github')
+        ?.addEventListener('click', openGithubImportPicker);
+
     // Google Drive: conectar
     document.getElementById('btn-drive-connect')
         ?.addEventListener('click', handleDriveConnect);
@@ -171,6 +176,128 @@ async function handleImportSongNew(e) {
         alert(`Erro ao importar música: ${err.message}`);
     } finally {
         e.target.value = '';
+    }
+}
+
+async function openGithubImportPicker() {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+        <div class="modal github-picker-modal">
+            <div class="modal-header">
+                <div class="modal-title">Importar do GitHub</div>
+                <button class="icon-btn" data-action="close" title="Fechar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2.2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="picker-body picker-body-single">
+                <div class="picker-col">
+                    <div class="picker-col-title">Músicas no repositório</div>
+                    <input type="text" class="field-input picker-search" placeholder="Buscar música...">
+                    <div class="picker-list" id="github-picker-list">
+                        <div class="picker-empty">Carregando...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="topbar-btn secondary" data-action="close">Fechar</button>
+            </div>
+        </div>`;
+
+    document.body.appendChild(overlay);
+
+    overlay.querySelectorAll('[data-action="close"]').forEach(btn => {
+        btn.addEventListener('click', () => overlay.remove());
+    });
+    overlay.addEventListener('click', e => {
+        if (e.target === overlay) overlay.remove();
+    });
+
+    const listEl   = overlay.querySelector('#github-picker-list');
+    const searchEl = overlay.querySelector('.picker-search');
+
+    let entries    = []; // { name, title, artist, raw }
+    let searchTerm = '';
+
+    function renderList() {
+        const term  = searchTerm.trim().toLowerCase();
+        const items = entries.filter(s => {
+            if (!term) return true;
+            return s.title.toLowerCase().includes(term) ||
+                   (s.artist || '').toLowerCase().includes(term);
+        });
+
+        if (!items.length) {
+            listEl.innerHTML = `<div class="picker-empty">Nenhuma música encontrada</div>`;
+            return;
+        }
+
+        listEl.innerHTML = items.map(s => `
+            <div class="picker-item" data-name="${escapeHTML(s.name)}">
+                <div class="picker-item-info">
+                    <div class="picker-item-title">${escapeHTML(s.title)}</div>
+                    ${s.artist ? `<div class="picker-item-artist">${escapeHTML(s.artist)}</div>` : ''}
+                </div>
+                <span class="picker-add-btn" title="Importar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2.3"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"/>
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                </span>
+            </div>`).join('');
+
+        listEl.querySelectorAll('.picker-item').forEach(el => {
+            el.addEventListener('click', () => {
+                const entry = entries.find(s => s.name === el.dataset.name);
+                if (!entry) return;
+                try {
+                    const imported = importSong(entry.raw);
+                    renderSongList();
+                    renderSetlistList();
+                    overlay.remove();
+                    alert(`Música "${imported.title}" importada com sucesso!`);
+                } catch (err) {
+                    alert(`Erro ao importar: ${err.message}`);
+                }
+            });
+        });
+    }
+
+    searchEl.addEventListener('input', e => {
+        searchTerm = e.target.value;
+        renderList();
+    });
+
+    try {
+        const files = await listRepoSongs();
+
+        if (!files.length) {
+            listEl.innerHTML = `<div class="picker-empty">Nenhuma música encontrada no repositório.</div>`;
+            return;
+        }
+
+        // Baixa cada arquivo para exibir título/artista reais na lista
+        const results = await Promise.all(files.map(async file => {
+            try {
+                const raw  = await fetchRepoSongContent(file.download_url);
+                const data = JSON.parse(raw);
+                return { name: file.name, title: data.title || file.name, artist: data.artist || '', raw };
+            } catch {
+                return null; // ignora arquivos que não são músicas válidas
+            }
+        }));
+
+        entries = results.filter(Boolean).sort((a, b) => a.title.localeCompare(b.title));
+        renderList();
+    } catch (err) {
+        listEl.innerHTML = `<div class="picker-empty">Erro ao carregar músicas do GitHub: ${escapeHTML(err.message)}</div>`;
     }
 }
 

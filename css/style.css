@@ -415,6 +415,19 @@ a {
     max-width: 720px;
 }
 
+/* IMPORTAR DO GITHUB (lista única, sem coluna de selecionados) */
+.github-picker-modal {
+    max-width: 480px;
+}
+
+.picker-body-single {
+    grid-template-columns: 1fr;
+}
+
+.picker-body-single .picker-col:first-child {
+    border-right: none;
+}
+
 .picker-body {
     display: grid;
     grid-template-columns: 1fr 1fr;
