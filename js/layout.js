@@ -2,14 +2,28 @@
 
 import { renderAll, destroyInstance } from './renderer.js';
 
-/* ── CONSTANTES DE ESTIMATIVA DE ALTURA ──────────────────────── */
+/* ── CONSTANTES DE ESTIMATIVA DE ALTURA ──────────────────────────
+ * Cabeçalho de seção e letra são medidos de verdade no DOM a cada
+ * buildSheet() (ver measureBlocks) — não usam mais número fixo, então
+ * nunca mais desalinham do CSS. A notação (measure-card) não dá pra
+ * medir de verdade quando o OSMD vai renderizar (isso só se sabe depois
+ * de renderizar, e é justamente o que queremos evitar fazer antes de
+ * paginar) — pra esses casos usamos a altura mínima real do CSS mais
+ * uma folga heurística por risco de quebra de linha em grooves com
+ * vários compassos. Quando NÃO há OSMD envolvido (ND / compasso não
+ * definido / compasso não encontrado), o conteúdo é só texto e CSS,
+ * então também medimos de verdade.
+ * ──────────────────────────────────────────────────────────────── */
 
 const SAFETY_MARGIN = 32;
-const SECTION_HEADER_HEIGHT = 56;   // padding (24+10) + text (~16) + extra (6)
-const NOTATION_MIN_HEIGHT = 180;  // measure-card min-height (180) + tag + padding + margin (ajustado para 180px)
-const LYRIC_LINE_HEIGHT = 30;   // font-size 0.93rem × line-height 2
-const LYRIC_BASE_PADDING = 30;   // padding vertical do mark + border do lyric-block
-const PAIR_MARGIN = 14;   // margin-bottom dos blocos
+const PAIR_MARGIN = 14;   // margin-bottom dos blocos (lyric-block / notation-block)
+
+const NOTATION_BASE_HEIGHT = 120;          // bate com .measure-card { min-height: 120px }
+const WRAP_RISK_PER_EXTRA_MEASURE = 20;    // heurística: chance de o OSMD quebrar em 2 linhas de pauta
+const WRAP_RISK_MAX = 100;                 // teto da folga, pra não voltar a desperdiçar espaço
+
+const HEADER_FALLBACK_HEIGHT = 44;
+const LYRIC_FALLBACK_HEIGHT = 30;
 
 /* ── ESTADO ──────────────────────────────────────────────────── */
 
@@ -28,10 +42,14 @@ export async function buildSheet(contentEl, song, parsedScore) {
     currentScore = parsedScore;
     currentXML = parsedScore?._rawXML ?? null;
 
-    // Cria descritores leves (sem elementos DOM) com alturas estimadas
-    const blocks = buildBlockDescriptors(song, parsedScore);
+    // Mede no DOM (escondido) as alturas reais de cabeçalho/letra, e dos
+    // cards de notação que não dependem do OSMD (ND / sem compasso).
+    const measured = measureBlocks(contentEl, song, parsedScore);
 
-    // Pagina instantaneamente usando alturas estimadas
+    // Cria descritores leves (sem elementos DOM) com as alturas medidas/estimadas
+    const blocks = buildBlockDescriptors(song, parsedScore, measured);
+
+    // Pagina instantaneamente usando essas alturas
     const availableHeight = contentEl.clientHeight - SAFETY_MARGIN;
     currentPages = paginate(blocks, availableHeight);
 
@@ -41,21 +59,94 @@ export async function buildSheet(contentEl, song, parsedScore) {
     return currentPages.length;
 }
 
+/* ── MEDIÇÃO REAL NO DOM (cabeçalho, letra, notação sem OSMD) ──── */
+
+/**
+ * Cria uma cópia invisível do grid do "sheet" (mesma largura e mesmo
+ * modo de coluna do render real) e mede a altura que cada bloco
+ * realmente ocupa com o CSS atual — em vez de confiar em números
+ * fixos que ficam desatualizados quando o CSS muda.
+ */
+function measureBlocks(contentEl, song, parsedScore) {
+    const probeWrap = document.createElement('div');
+    probeWrap.style.position = 'absolute';
+    probeWrap.style.visibility = 'hidden';
+    probeWrap.style.pointerEvents = 'none';
+    probeWrap.style.left = '-9999px';
+    probeWrap.style.top = '0';
+    probeWrap.style.width = Math.max(contentEl.clientWidth, 1) + 'px';
+
+    const isSingleCol = localStorage.getItem('holydrums_layout') === 'single';
+    const probeSheet = document.createElement('div');
+    probeSheet.className = 'sheet' + (isSingleCol ? ' sheet-single-col' : '');
+
+    probeWrap.appendChild(probeSheet);
+    document.body.appendChild(probeWrap);
+
+    // Cabeçalho de seção — altura representativa (mesma pra todas as seções;
+    // nomes muito longos que quebrem em 2 linhas não são considerados)
+    const headerProbe = buildSectionHeaderEl('Sonda de medição');
+    probeSheet.appendChild(headerProbe);
+    const headerHeight = headerProbe.offsetHeight || HEADER_FALLBACK_HEIGHT;
+    probeSheet.removeChild(headerProbe);
+
+    const lyricHeights = new Map();
+    const notationHeights = new Map();
+
+    song.sections.forEach(section => {
+        section.marks.forEach((mark, markIdx) => {
+            // Letra: mede o conteúdo real (respeita \n E quebra automática
+            // de linha por texto longo, que o cálculo antigo ignorava)
+            const lyricProbe = buildLyricEl(mark);
+            probeSheet.appendChild(lyricProbe);
+            lyricHeights.set(mark.id, lyricProbe.offsetHeight || LYRIC_FALLBACK_HEIGHT);
+            probeSheet.removeChild(lyricProbe);
+
+            // Notação: só dá pra medir de verdade quando NÃO depende do OSMD
+            // (ND, compasso não definido/não encontrado) — esses casos são
+            // só texto e CSS, então a medição já sai exata.
+            if (!hasRenderableNotation(mark, parsedScore)) {
+                const notationProbe = buildNotationEl(mark, markIdx, parsedScore);
+                if (!isSingleCol) notationProbe.style.gridColumn = '2';
+                probeSheet.appendChild(notationProbe);
+                notationHeights.set(mark.id, notationProbe.offsetHeight);
+                probeSheet.removeChild(notationProbe);
+            }
+        });
+    });
+
+    document.body.removeChild(probeWrap);
+    return { headerHeight, lyricHeights, notationHeights };
+}
+
+/**
+ * true quando o trecho realmente vai ter uma notação renderizada pelo OSMD
+ * — precisa espelhar exatamente a condição usada em buildNotationEl() pra
+ * não subestimar a altura de trechos antigos que ainda tenham measureStart
+ * salvo de antes do groove ND passar a limpar esses campos.
+ */
+function hasRenderableNotation(mark, parsedScore) {
+    if (!parsedScore || !mark.measureStart) return false;
+    const start = mark.measureStart;
+    const end = mark.measureEnd ?? mark.measureStart;
+    return parsedScore.measures.some(m => m.number >= start && m.number <= end);
+}
+
 /* ── DESCRITORES DE BLOCOS (sem DOM) ─────────────────────────── */
 
-function buildBlockDescriptors(song, parsedScore) {
+function buildBlockDescriptors(song, parsedScore, measured) {
     const blocks = [];
 
     song.sections.forEach(section => {
         blocks.push({
             type: 'header',
             name: section.name,
-            estimatedHeight: SECTION_HEADER_HEIGHT,
+            estimatedHeight: measured.headerHeight,
         });
 
         section.marks.forEach((mark, markIdx) => {
-            const lyricH = estimateLyricHeight(mark.lyrics);
-            const notationH = NOTATION_MIN_HEIGHT;
+            const lyricH = measured.lyricHeights.get(mark.id) ?? LYRIC_FALLBACK_HEIGHT;
+            const notationH = estimateNotationHeight(mark, parsedScore, measured);
             const pairH = Math.max(lyricH, notationH) + PAIR_MARGIN;
 
             blocks.push({
@@ -70,10 +161,24 @@ function buildBlockDescriptors(song, parsedScore) {
     return blocks;
 }
 
-function estimateLyricHeight(lyrics) {
-    if (!lyrics) return LYRIC_BASE_PADDING;
-    const lineCount = (lyrics.match(/\n/g) || []).length + 1;
-    return lineCount * LYRIC_LINE_HEIGHT + LYRIC_BASE_PADDING;
+/**
+ * Altura da notação. Quando o OSMD vai renderizar de verdade, não dá pra
+ * medir com antecedência — usamos a altura mínima real do CSS (120px) mais
+ * uma folga que cresce com o número de compassos do trecho, já que grooves
+ * com vários compassos têm mais chance do OSMD quebrar em 2 linhas de pauta
+ * (isso depende da densidade de notas, então é uma heurística, não garantia).
+ */
+function estimateNotationHeight(mark, parsedScore, measured) {
+    if (!hasRenderableNotation(mark, parsedScore)) {
+        return measured.notationHeights.get(mark.id) ?? NOTATION_BASE_HEIGHT;
+    }
+
+    const start = mark.measureStart;
+    const end = mark.measureEnd ?? mark.measureStart;
+    const measureCount = Math.max(1, end - start + 1);
+    const wrapRisk = Math.min(WRAP_RISK_MAX, (measureCount - 1) * WRAP_RISK_PER_EXTRA_MEASURE);
+
+    return NOTATION_BASE_HEIGHT + wrapRisk;
 }
 
 /* ── PAGINAÇÃO ───────────────────────────────────────────────── */
@@ -169,6 +274,17 @@ async function renderPage(contentEl, pageIdx) {
                 console.warn('layout: erro ao renderizar notação', err);
             }
         }
+    }
+
+    // Rede de segurança: se mesmo assim a página real ficar maior que o
+    // espaço disponível, avisa no console (não corrige sozinho — só ajuda
+    // a flagrar se a estimativa de algum bloco precisa de ajuste).
+    const overflow = sheet.scrollHeight - contentEl.clientHeight;
+    if (overflow > 8) {
+        console.warn(
+            `layout: página ${pageIdx + 1} ficou ${Math.round(overflow)}px maior que o espaço disponível ` +
+            `(estimativa de altura ficou abaixo do real nesta página).`
+        );
     }
 }
 
