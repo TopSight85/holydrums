@@ -87,6 +87,15 @@ function bindIndexEvents() {
     document.getElementById('import-file')
         ?.addEventListener('change', handleImportAllLocal);
 
+    // Importar música avulsa (cria uma música nova, sem precisar de uma existente)
+    document.getElementById('btn-import-song-new')
+        ?.addEventListener('click', () => {
+            document.getElementById('import-song-file')?.click();
+        });
+
+    document.getElementById('import-song-file')
+        ?.addEventListener('change', handleImportSongNew);
+
     // Google Drive: conectar
     document.getElementById('btn-drive-connect')
         ?.addEventListener('click', handleDriveConnect);
@@ -128,6 +137,11 @@ async function handleImportAllLocal(e) {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!confirm('Importar este backup vai substituir TODAS as músicas e setlists salvas atualmente. Deseja continuar?')) {
+        e.target.value = '';
+        return;
+    }
+
     try {
         const text = await file.text();
         importAll(text);
@@ -139,6 +153,23 @@ async function handleImportAllLocal(e) {
         alert(`Erro ao importar: ${err.message}`);
     } finally {
         // Permite selecionar o mesmo arquivo novamente depois
+        e.target.value = '';
+    }
+}
+
+async function handleImportSongNew(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+        const text = await file.text();
+        const imported = importSong(text);
+        alert(`Música "${imported.title}" importada com sucesso!`);
+        renderSongList();
+        renderSetlistList();
+    } catch (err) {
+        alert(`Erro ao importar música: ${err.message}`);
+    } finally {
         e.target.value = '';
     }
 }
@@ -187,6 +218,9 @@ async function handleDriveConnect() {
 }
 
 async function handleDriveSave() {
+    if (!confirm('Salvar no Google Drive vai sobrescrever o backup que já existe lá. Deseja continuar?')) {
+        return;
+    }
     try {
         const data = exportAll();
         await saveBackupToDrive(data);
@@ -197,6 +231,9 @@ async function handleDriveSave() {
 }
 
 async function handleDriveLoad() {
+    if (!confirm('Restaurar do Google Drive vai substituir TODAS as músicas e setlists salvas neste dispositivo. Deseja continuar?')) {
+        return;
+    }
     try {
         const text = await loadBackupFromDrive();
         importAll(text);
@@ -338,6 +375,7 @@ function handleExportSong(id) {
         alert(`Erro ao exportar música: ${err.message}`);
     }
 }
+
 
 async function handleImportSong(id) {
     const song = getSongById(id);
@@ -803,6 +841,10 @@ function bindEditorEvents() {
             const isCompact = !sectionsList.classList.contains('compact-layout');
             localStorage.setItem('holydrums_editor_layout', isCompact ? 'compact' : 'default');
             applyLayout(isCompact);
+
+            // As prévias já renderizadas ficam com o tamanho antigo até serem
+            // recalculadas contra a nova largura do container.
+            settleLayout().then(renderVisiblePreviews);
         });
     }
 
@@ -934,8 +976,9 @@ async function renderMarkPreview(card, mark) {
     try {
         if (!isOSMDReady()) await waitForOSMD();
 
-        // OSMD precisa que o container já tenha width real > 0 para renderizar
-        await new Promise(resolve => requestAnimationFrame(resolve));
+        // OSMD precisa que o container já tenha width real > 0 para renderizar,
+        // e após uma troca de layout a largura só assenta depois de 2 frames.
+        await settleLayout();
 
         if (measures.length === 1) {
             await renderMeasure(card, measures[0], editorState.musicXML);
@@ -1097,6 +1140,7 @@ function buildMarkItem(mark, sIdx, mIdx) {
 
     const item = document.createElement('div');
     item.className     = 'mark-item';
+    item.classList.toggle('mark-nd', mark.groove === 'nd');
     item.dataset.sIdx  = sIdx; // Índice da seção pai
     item.dataset.mIdx  = mIdx; // Índice do mark
     item.draggable     = true; // Habilita drag para o trecho
@@ -1123,24 +1167,56 @@ function buildMarkItem(mark, sIdx, mIdx) {
     // ── Botão de cor/groove ──
     const colorBtn = document.createElement('button');
     colorBtn.className = `mark-color-btn ${mark.groove}`;
-    colorBtn.title     = `Clique para trocar o groove (${grooveLetter})`;
+    colorBtn.title     = `Clique para avançar · botão direito para voltar (${grooveLetter})`;
     colorBtn.textContent = grooveLetter;
 
-    colorBtn.addEventListener('click', () => {
-        const idx  = GROOVES.indexOf(mark.groove);
-        const next = GROOVES[(idx + 1) % GROOVES.length];
+    function applyGroove(next) {
         editorState.sections[sIdx].marks[mIdx].groove = next;
         colorBtn.className = `mark-color-btn ${next}`;
         const nextLetter = next === 'nd'
             ? 'ND'
             : ['A','B','C','D','E','F','G','H','I','J','K','L'][parseInt(next.replace('g', ''), 10) - 1] || '';
         colorBtn.textContent = nextLetter;
-        colorBtn.title = `Clique para trocar o groove (${nextLetter})`;
+        colorBtn.title = `Clique para avançar · botão direito para voltar (${nextLetter})`;
 
         // Mantém a cor do card de prévia sincronizada com o groove atual
         const nextColorClass = next === 'nd' ? 'nnd' : 'n' + next.replace('g', '');
         previewCard.className =
             `mark-preview-card ${nextColorClass}` + (previewCard.classList.contains('has-content') ? ' has-content' : '');
+
+        // ND não usa compasso: esconde os campos e limpa qualquer valor salvo
+        item.classList.toggle('mark-nd', next === 'nd');
+        if (next === 'nd') {
+            editorState.sections[sIdx].marks[mIdx].measureStart = null;
+            editorState.sections[sIdx].marks[mIdx].measureEnd   = null;
+            measureStart.value = '';
+            measureEnd.value   = '';
+            renderedPreviewIds.delete(mark.id);
+            destroyInstance(previewCard);
+            previewCard.classList.remove('has-content', 'loading');
+            previewCard.innerHTML = `
+                <div class="mark-preview-placeholder">
+                    <svg class="mark-preview-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2.2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    <span>Prévia</span>
+                </div>`;
+        }
+    }
+
+    colorBtn.addEventListener('click', () => {
+        const idx = GROOVES.indexOf(mark.groove);
+        applyGroove(GROOVES[(idx + 1) % GROOVES.length]);
+    });
+
+    // Botão direito: volta uma cor/letra (evita ter que dar a volta inteira no ciclo)
+    colorBtn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const idx = GROOVES.indexOf(mark.groove);
+        applyGroove(GROOVES[(idx - 1 + GROOVES.length) % GROOVES.length]);
     });
 
     // ── Card de prévia do compasso (clicável, entre a letra e os campos de compasso) ──
@@ -1745,4 +1821,13 @@ function decodeHTMLEntities(str) {
 
 function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+/** Garante que o layout (largura real do container) já assentou antes de medir/renderizar. */
+async function settleLayout() {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    if (document.fonts?.ready) {
+        try { await document.fonts.ready; } catch { /* noop */ }
+    }
 }

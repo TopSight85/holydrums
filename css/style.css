@@ -173,6 +173,25 @@ a {
     opacity: 0.85;
 }
 
+.section-heading-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Variante com menos destaque (ex: Importar música, ao lado de Nova música) */
+.btn-new-secondary {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1.5px solid var(--border);
+}
+
+.btn-new-secondary:hover {
+    opacity: 1;
+    color: var(--text-secondary);
+    border-color: var(--text-muted);
+}
+
 /* SONG CARDS */
 .song-list {
     display: flex;
@@ -577,15 +596,18 @@ a {
 
 /* EDITOR PAGE */
 .editor-page {
-    min-height: 100vh;
+    height: 100vh;
+    height: 100dvh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
 .editor-layout {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    height: 100%;
+    min-height: 0;
 }
 
 /* EDITOR TOPBAR */
@@ -619,8 +641,10 @@ a {
 .editor-body {
     display: grid;
     grid-template-columns: 300px 1fr;
+    grid-template-rows: minmax(0, 1fr);
     flex: 1;
     min-height: 0;
+    overflow: hidden;
 }
 
 @media (max-width: 800px) {
@@ -635,12 +659,16 @@ a {
     display: flex;
     flex-direction: column;
     gap: 16px;
+    height: 100%;
+    min-height: 0;
     overflow-y: auto;
     background: var(--bg);
 }
 
 .editor-main {
     padding: 20px 24px;
+    height: 100%;
+    min-height: 0;
     overflow-y: auto;
 }
 
@@ -666,8 +694,9 @@ a {
 }
 
 .instructions-card {
-    margin-top: auto;
-    /* Ancorar embaixo na barra lateral */
+    margin-top: 28px;
+    /* Fica no fluxo normal, logo após os cards de configuração,
+       apenas com respiro extra para separar visualmente */
     background: transparent;
     border: 1.5px dashed var(--border);
     box-shadow: none;
@@ -1132,6 +1161,15 @@ a {
 
 .mark-textarea::placeholder {
     color: var(--text-muted);
+}
+
+.mark-item.mark-nd .mark-preview-card,
+.mark-item.mark-nd .mark-measure-wrap {
+    display: none;
+}
+
+.mark-item.mark-nd .mark-lyric-preview-wrap {
+    grid-template-columns: 1fr;
 }
 
 /* WRAPPER LETRA + PRÉVIA (mesma proporção 25% / 75% do viewer) */
@@ -1930,12 +1968,11 @@ mark.g12 {
     color: rgb(var(--c6));
 }
 
-.nnd {
+.measure-card.nnd {
     background: none;
     border: none;
     box-shadow: none;
     min-height: 0px;
-
 }
 
 .nnd .measure-tag {

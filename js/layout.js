@@ -152,9 +152,12 @@ async function renderPage(contentEl, pageIdx) {
     pageEl.appendChild(sheet);
     contentEl.appendChild(pageEl);
 
-    // Força o browser a calcular o layout antes de chamar o OSMD
-    // OSMD precisa que o container tenha width real > 0 para renderizar.
-    await new Promise(resolve => requestAnimationFrame(resolve));
+    // Força o browser a "assentar" o layout antes de chamar o OSMD.
+    // Um único rAF não é suficiente após uma troca de layout (grid-template-columns
+    // muda a largura do container e as fontes do Google Fonts podem reajustar
+    // métricas em seguida) — por isso aguardamos dois frames + as fontes prontas,
+    // garantindo que o OSMD meça a largura final, não uma intermediária.
+    await settleLayout();
 
     // Renderiza notação OSMD nos containers já presentes no DOM
     if (currentScore && currentXML) {
@@ -166,6 +169,15 @@ async function renderPage(contentEl, pageIdx) {
                 console.warn('layout: erro ao renderizar notação', err);
             }
         }
+    }
+}
+
+/** Garante que o layout (largura real do container) já assentou antes de medir. */
+async function settleLayout() {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    if (document.fonts?.ready) {
+        try { await document.fonts.ready; } catch { /* noop */ }
     }
 }
 
@@ -241,7 +253,7 @@ function buildNotationEl(mark, markIdx, parsedScore) {
     if (!parsedScore || !mark.measureStart) {
         content.innerHTML = `
             <span class="measure-msg">
-                ${mark.groove === 'nd' ? 'Sem bateria' : 'Compasso não definido'}
+                ${mark.groove === 'nd' ? '-' : 'Compasso não definido'}
             </span>`;
         tag.textContent = grooveLabel(mark.groove, markIdx);
         card.appendChild(tag);

@@ -19,8 +19,12 @@
       <section>
         <div class="section-heading">
           <h2 class="section-title">Músicas</h2>
-          <a class="btn-new" href="editor.html">Nova música</a>
+          <div class="section-heading-actions">
+            <button id="btn-import-song-new" class="btn-new btn-new-secondary" type="button">Importar música</button>
+            <a class="btn-new" href="editor.html">Nova música</a>
+          </div>
         </div>
+        <input id="import-song-file" type="file" accept="application/json" hidden />
         <div id="song-list" class="song-list"></div>
       </section>
 
