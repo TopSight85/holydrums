@@ -25,6 +25,9 @@ const WRAP_RISK_MAX = 100;                 // teto da folga, pra não voltar a d
 const HEADER_FALLBACK_HEIGHT = 44;
 const LYRIC_FALLBACK_HEIGHT = 30;
 
+const OVERFLOW_THRESHOLD = 8;      // mesma tolerância que já existia no aviso de overflow
+const MAX_CORRECTION_PASSES = 8;   // trava de segurança contra loop de autocorreção
+
 /* ── ESTADO ──────────────────────────────────────────────────── */
 
 let currentPages = [];
@@ -227,7 +230,7 @@ function paginate(blocks, availableHeight) {
 
 /* ── RENDERIZAÇÃO DE PÁGINA ──────────────────────────────────── */
 
-async function renderPage(contentEl, pageIdx) {
+async function renderPage(contentEl, pageIdx, correctionDepth = 0) {
     // Limpa a página anterior
     contentEl.querySelectorAll('.page').forEach(p => {
         p.querySelectorAll('[data-render-target]').forEach(el => destroyInstance(el));
@@ -276,16 +279,58 @@ async function renderPage(contentEl, pageIdx) {
         }
     }
 
-    // Rede de segurança: se mesmo assim a página real ficar maior que o
-    // espaço disponível, avisa no console (não corrige sozinho — só ajuda
-    // a flagrar se a estimativa de algum bloco precisa de ajuste).
+    // Autocorreção: se a página real ficar maior que o espaço disponível
+    // (a heurística de notação subestimou o quanto o OSMD ia quebrar em
+    // linhas), devolve o(s) último(s) bloco(s) pra próxima página e
+    // re-renderiza esta já corrigida — em vez de só logar e deixar cortado.
     const overflow = sheet.scrollHeight - contentEl.clientHeight;
-    if (overflow > 8) {
+    if (overflow > OVERFLOW_THRESHOLD) {
+        if (correctionDepth < MAX_CORRECTION_PASSES && pushOverflowToNextPage(pageIdx)) {
+            await renderPage(contentEl, pageIdx, correctionDepth + 1);
+            return;
+        }
+
+        // Não deu pra corrigir sozinho (sobrou 1 bloco só e mesmo assim não
+        // cabe, ou esgotou as tentativas) — aí sim só avisa no console.
         console.warn(
             `layout: página ${pageIdx + 1} ficou ${Math.round(overflow)}px maior que o espaço disponível ` +
-            `(estimativa de altura ficou abaixo do real nesta página).`
+            `mesmo após autocorreção (estimativa de altura ficou muito abaixo do real nesta página).`
         );
     }
+}
+
+/**
+ * Move o(s) último(s) bloco(s) da página `pageIdx` para o início da próxima
+ * página, como resposta a um overflow real medido depois do render do OSMD.
+ * Também evita deixar um cabeçalho de seção sozinho, sem nenhum trecho
+ * abaixo, no fim da página — mesma regra que a paginação inicial já respeita
+ * (ver headerWouldBeOrphan em paginate()).
+ *
+ * Só mexe na página atual e na seguinte; páginas já visitadas antes não são
+ * alteradas retroativamente. Se a próxima página ainda não existir (esta é
+ * a última), ela é criada — o que aumenta o total de páginas da música.
+ */
+function pushOverflowToNextPage(pageIdx) {
+    const page = currentPages[pageIdx];
+    if (!page || page.length <= 1) return false;
+
+    const moved = [page.pop()];
+
+    while (page.length > 0 && page[page.length - 1].type === 'header') {
+        moved.unshift(page.pop());
+    }
+
+    if (!page.length) {
+        // Não sobrou nada além do(s) cabeçalho(s) — desfaz e desiste;
+        // não há como encolher mais esta página.
+        page.push(...moved);
+        return false;
+    }
+
+    if (!currentPages[pageIdx + 1]) currentPages[pageIdx + 1] = [];
+    currentPages[pageIdx + 1].unshift(...moved);
+
+    return true;
 }
 
 /** Garante que o layout (largura real do container) já assentou antes de medir. */
@@ -408,10 +453,12 @@ function buildNotationEl(mark, markIdx, parsedScore) {
 
 /* ── NAVEGAÇÃO ───────────────────────────────────────────────── */
 
-export function goToPage(contentEl, pageIdx) {
+export async function goToPage(contentEl, pageIdx) {
     if (pageIdx < 0 || pageIdx >= currentPages.length) return;
     currentPageIdx = pageIdx;
-    renderPage(contentEl, pageIdx);
+    // Aguarda o render (que pode incluir passes de autocorreção e por isso
+    // mudar currentPages.length) antes de avisar a UI do total de páginas.
+    await renderPage(contentEl, pageIdx);
     onPageChange?.(pageIdx, currentPages.length);
 }
 
