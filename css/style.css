@@ -179,7 +179,7 @@ a {
     gap: 8px;
 }
 
-/* Variante com menos destaque (ex: Importar música, ao lado de Nova música) */
+/* Variante com menos destaque (Importar música, Importar do GitHub) */
 .btn-new-secondary {
     background: transparent;
     color: var(--text-muted);
