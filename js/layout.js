@@ -12,7 +12,7 @@ import { renderAll, destroyInstance } from './renderer.js';
  * uma folga heurística por risco de quebra de linha em grooves com
  * vários compassos. Quando NÃO há OSMD envolvido (ND / compasso não
  * definido / compasso não encontrado), o conteúdo é só texto e CSS,
- * então também medimos de verdade.
+ * então também é medido de verdade.
  * ──────────────────────────────────────────────────────────────── */
 
 const SAFETY_MARGIN = 32;
