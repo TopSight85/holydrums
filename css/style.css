@@ -179,7 +179,7 @@ a {
     gap: 8px;
 }
 
-/* Variante com menos destaque (ex: Importar música, ao lado de Nova música) */
+/* Variante com menos destaque (Importar música, Importar do GitHub) */
 .btn-new-secondary {
     background: transparent;
     color: var(--text-muted);
@@ -660,9 +660,73 @@ a {
     overflow: hidden;
 }
 
-@media (max-width: 800px) {
+@media (max-width: 1024px) {
+    .editor-page {
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
+    }
+
+    .editor-layout {
+        height: auto;
+        min-height: 100vh;
+    }
+
     .editor-body {
         grid-template-columns: 1fr;
+        height: auto;
+        overflow: visible;
+    }
+
+    .editor-sidebar {
+        height: auto;
+        overflow: visible;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .editor-main {
+        height: auto;
+        overflow: visible;
+    }
+}
+
+/* Layout compacto dos cards do topo em telas de tablet:
+   nome/artista/andamento em 3 colunas, link ocupando a linha toda,
+   e a área de partitura em 2 colunas (dropzone | nome do arquivo).
+   Abaixo de 600px (celular) os campos continuam empilhados. */
+@media (min-width: 600px) and (max-width: 1024px) {
+    .card-song-info {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px 16px;
+    }
+
+    .card-song-info .editor-card-title {
+        grid-column: 1 / -1;
+    }
+
+    .card-song-info .field-link {
+        grid-column: 1 / -1;
+    }
+
+    #upload-zone {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        align-items: center;
+        gap: 10px 20px;
+        text-align: left;
+        padding: 16px 20px;
+    }
+
+    #upload-zone .upload-zone-label {
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    #upload-zone .upload-filename {
+        margin-top: 0;
+        text-align: left;
     }
 }
 

@@ -61,17 +61,17 @@
 
         <div class="editor-body">
             <div class="editor-sidebar">
-                <div class="editor-card">
+                <div class="editor-card card-song-info">
                     <div class="editor-card-title">Informações</div>
-                    <div class="field-group">
+                    <div class="field-group field-title">
                         <label for="song-title" class="field-label">Nome da música</label>
                         <input type="text" id="song-title" class="field-input" placeholder="Ex: Ousado Amor">
                     </div>
-                    <div class="field-group">
+                    <div class="field-group field-artist">
                         <label for="song-artist" class="field-label">Artista</label>
                         <input type="text" id="song-artist" class="field-input" placeholder="Ex: Isaias Saad">
                     </div>
-                    <div class="field-group">
+                    <div class="field-group field-tempo">
                         <label for="tempo-bpm" class="field-label">Andamento</label>
                         <div class="tempo-row">
                             <select id="tempo-note" class="field-select">
@@ -85,19 +85,19 @@
                             <span class="tempo-bpm-label">BPM</span>
                         </div>
                     </div>
-                    <div class="field-group">
+                    <div class="field-group field-link">
                         <label for="song-link" class="field-label">Link de referência</label>
                         <input type="url" id="song-link" class="field-input" placeholder="Ex: https://youtu.be/video-da-musica">
                     </div>
                 </div>
 
-                <div class="editor-card">
+                <div class="editor-card card-score">
                     <div class="editor-card-title">Partitura (MusicXML)</div>
                     <div id="upload-zone" class="upload-zone">
                         <label for="file-input" class="upload-zone-label">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" stroke-width="2"
-                                 stroke-linecap="round" stroke-linejoin="round">
+                                stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M4 14.899A7 7 0 017 4h10a7 7 0 010 14.899"/>
                                 <path d="M12 16v6"/>
                                 <path d="M15 19l-3 3-3-3"/>
