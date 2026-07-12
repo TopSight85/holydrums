@@ -61,11 +61,6 @@
           "measureStart": 4
         },
         {
-          "id": "mri2ql8d4wdo4",
-          "groove": "nd",
-          "lyrics": "[1 compasso]"
-        },
-        {
           "id": "mri2qovam18nu",
           "groove": "g4",
           "lyrics": "[entrada para pré-refrão]",
@@ -182,5 +177,5 @@
   ],
   "id": "mri356ugtlkbi",
   "createdAt": 1783878405352,
-  "updatedAt": 1783878405352
+  "updatedAt": 1783878716791
 }
