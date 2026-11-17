@@ -8,8 +8,8 @@ import {
     getSongById,
     saveSong,
     deleteSong,
-    exportSong, // Importado
-    importSong, // Importado
+    exportSong,
+    importSong,
     getAllSetlists,
     getSetlistWithSongs,
     saveSetlist,
@@ -28,8 +28,9 @@ import {
     destroyInstance,
 } from './renderer.js';
 import {
-    buildSheet,
-    goToPage,
+    prepareSheet,
+    showSheet,
+    clearSheets,
     nextPage,
     prevPage,
     onPageChanged,
@@ -526,7 +527,7 @@ async function handleImportSong(id) {
 
         try {
             const text = await file.text();
-            const imported = importSong(text); // A função importSong já lida com a atualização se o ID for o mesmo
+            const imported = importSong(text); // importSong já lida com a atualização se o ID for o mesmo
             alert(`Música "${imported.title}" importada e atualizada com sucesso!`);
             renderSongList();
             renderSetlistList();
@@ -1607,7 +1608,7 @@ function setupDragAndDrop() {
     });
 
     // dragend fallback
-    sectionsList.addEventListener('dragend', e => {
+    sectionsList.addEventListener('dragend', () => {
         document.querySelectorAll('.marks-list.drag-over').forEach(el => el.classList.remove('drag-over'));
         if (draggedItem) {
             draggedItem.el.classList.remove('dragging');
@@ -1657,7 +1658,7 @@ function handleSave() {
         sections: editorState.sections,
     };
 
-    const saved = saveSong(songData); // saveSong agora retorna o objeto salvo
+    const saved = saveSong(songData); // saveSong retorna o objeto salvo
 
     // Atualiza o botão Visualizar com o ID recém-gerado (caso seja música nova)
     const btnView = document.getElementById('btn-view');
@@ -1677,11 +1678,15 @@ function handleSave() {
  * ════════════════════════════════════════════════════════════════ */
 
 let viewerState = {
-    songs:       [],
-    songIdx:     0,
+    songs:      [],
+    songIdx:    0,
     parsedScore: null,
-    cleanXML:    null,
+    scoreCache: new Map(), // song.id -> MusicXML já parseado (ou null)
 };
+
+// Identifica a "rodada" de pré-carregamento atual; trocar de música ou
+// de layout cancela a rodada anterior.
+let preloadRun = 0;
 
 async function initViewer() {
     const params    = new URLSearchParams(window.location.search);
@@ -1710,8 +1715,36 @@ async function initViewer() {
         return;
     }
 
+    // Registrado uma única vez: o layout avisa sempre que a página muda
+    onPageChanged((pageIdx, total) => updatePageControls(pageIdx, total));
+
     bindViewerEvents();
     await loadSongInViewer(0);
+}
+
+/** Faz o parse do MusicXML da música uma única vez e guarda em cache. */
+async function getScoreFor(song) {
+    if (viewerState.scoreCache.has(song.id)) {
+        return viewerState.scoreCache.get(song.id);
+    }
+
+    const xml = song.musicXML ? decodeHTMLEntities(song.musicXML) : null;
+    let parsed = null;
+
+    if (xml) {
+        if (!isOSMDReady()) {
+            try { await waitForOSMD(); }
+            catch (e) { console.warn('OSMD não disponível, continuando sem notação.', e); }
+        }
+        try {
+            parsed = await parseMusicXML(xml);
+        } catch (err) {
+            console.warn('viewer: erro no parse do MusicXML', err);
+        }
+    }
+
+    viewerState.scoreCache.set(song.id, parsed);
+    return parsed;
 }
 
 async function loadSongInViewer(songIdx) {
@@ -1720,20 +1753,16 @@ async function loadSongInViewer(songIdx) {
     const song      = viewerState.songs[songIdx];
     const contentEl = document.getElementById('viewer-content');
 
-    viewerState.cleanXML = song.musicXML
-        ? decodeHTMLEntities(song.musicXML)
-        : null;
-
     setText('viewer-title',  song.title  ?? '');
     setText('viewer-artist', song.artist ?? '');
 
     const tempoNoteEl = document.getElementById('viewer-tempo-note');
     if (tempoNoteEl) {
-        tempoNoteEl.textContent = song.tempo?.note === 'half'   ? '𝅗𝅥'
-                                : song.tempo?.note === 'eighth' ? '♪'
+        tempoNoteEl.textContent = song.tempo?.note === 'half'           ? '𝅗𝅥'
+                                : song.tempo?.note === 'eighth'         ? '♪'
                                 : song.tempo?.note === 'dotted-quarter' ? '♩.' : '♩';
     }
-    setText('viewer-bpm',    song.tempo?.bpm ?? '—');
+    setText('viewer-bpm', song.tempo?.bpm ?? '—');
 
     const refBtn = document.getElementById('btn-reference');
     if (refBtn) {
@@ -1747,28 +1776,54 @@ async function loadSongInViewer(songIdx) {
 
     updateSetlistBar(songIdx);
 
-    // Adicionado guard para evitar loop se OSMD não carregar
-    if (viewerState.cleanXML && !isOSMDReady()) {
-        try { await waitForOSMD(); } catch (e) {
-            console.warn('OSMD não disponível, continuando sem notação.', e);
-            // Não retorna, apenas continua sem a notação musical
-        }
-    }
+    const parsed = await getScoreFor(song);
+    viewerState.parsedScore = parsed;
 
-    viewerState.parsedScore = null;
+    // Se a música já foi pré-carregada, isto resolve na hora.
+    const sheet = await prepareSheet(contentEl, song, parsed);
 
-    if (viewerState.cleanXML) {
+    // O usuário pode ter trocado de música (ou o cache ter sido invalidado)
+    // enquanto carregava.
+    if (viewerState.songIdx !== songIdx || sheet.dead) return;
+
+    showSheet(contentEl, sheet);
+
+    // Com a música atual na tela, prepara as outras em segundo plano
+    preloadOtherSongs(songIdx);
+}
+
+/** Pré-carrega em segundo plano: próximas músicas primeiro, depois as anteriores. */
+async function preloadOtherSongs(currentIdx) {
+    const run       = ++preloadRun;
+    const contentEl = document.getElementById('viewer-content');
+    const total     = viewerState.songs.length;
+
+    const order = [];
+    for (let i = currentIdx + 1; i < total; i++) order.push(i);
+    for (let i = currentIdx - 1; i >= 0; i--)    order.push(i);
+
+    for (const idx of order) {
+        if (run !== preloadRun) return;
+
+        const song = viewerState.songs[idx];
         try {
-            viewerState.parsedScore = await parseMusicXML(viewerState.cleanXML);
+            const parsed = await getScoreFor(song);
+            if (run !== preloadRun) return;
+            await prepareSheet(contentEl, song, parsed);
         } catch (err) {
-            console.warn('viewer: erro no parse do MusicXML', err);
+            console.warn(`viewer: falha ao pré-carregar "${song.title}"`, err);
         }
+
+        // Respiro entre músicas, para não travar a interface
+        await new Promise(resolve => setTimeout(resolve, 50));
     }
+}
 
-    const totalPages = await buildSheet(contentEl, song, viewerState.parsedScore);
-
-    onPageChanged((pageIdx, total) => updatePageControls(pageIdx, total));
-    updatePageControls(0, totalPages);
+/** Descarta tudo o que foi renderizado e recarrega a música atual (layout/tamanho mudou). */
+function invalidateAndReload() {
+    preloadRun++;
+    clearSheets(document.getElementById('viewer-content'));
+    loadSongInViewer(viewerState.songIdx);
 }
 
 /* ── CONTROLES DE PÁGINA ─────────────────────────────────────── */
@@ -1809,11 +1864,8 @@ function bindViewerEvents() {
     document.getElementById('btn-layout')
         ?.addEventListener('click', () => {
             const current = localStorage.getItem('holydrums_layout');
-            const next = current === 'single' ? 'double' : 'single';
-            localStorage.setItem('holydrums_layout', next);
-            
-            // Recarrega a música atual para aplicar o layout e forçar re-render do OSMD
-            loadSongInViewer(viewerState.songIdx);
+            localStorage.setItem('holydrums_layout', current === 'single' ? 'double' : 'single');
+            invalidateAndReload();
         });
 
     // ── Botão Fullscreen ──
@@ -1839,6 +1891,26 @@ function bindViewerEvents() {
             if (viewerState.songIdx < viewerState.songs.length - 1)
                 loadSongInViewer(viewerState.songIdx + 1);
         });
+
+    // ── Tamanho da tela mudou (tela cheia, rotação do tablet) ──
+    // A paginação depende do tamanho da área de conteúdo, então as páginas
+    // em cache deixam de valer e precisam ser refeitas.
+    let lastW = contentEl.clientWidth;
+    let lastH = contentEl.clientHeight;
+    let resizeTimer = null;
+
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+            const w = contentEl.clientWidth;
+            const h = contentEl.clientHeight;
+            // Tolerância: pequenas variações (barra do navegador) não refazem tudo
+            if (Math.abs(w - lastW) < 20 && Math.abs(h - lastH) < 40) return;
+            lastW = w;
+            lastH = h;
+            invalidateAndReload();
+        }, 400);
+    });
 }
 
 function updatePageControls(pageIdx, total) {
@@ -1866,13 +1938,13 @@ function updatePageDots(pageIdx, total) {
 
 /* ── SETLIST BAR ─────────────────────────────────────────────── */
 
-function initSetlistBar(songs) {
-    const bar   = document.getElementById('setlist-bar');
-    const navEl = document.getElementById('setlist-nav');
+function initSetlistBar() {
+    const bar        = document.getElementById('setlist-bar');
+    const navEl      = document.getElementById('setlist-nav');
     const navElRight = document.getElementById('setlist-nav-right');
 
-    if (bar)   bar.classList.add('visible');
-    if (navEl) navEl.style.display = '';
+    if (bar)        bar.classList.add('visible');
+    if (navEl)      navEl.style.display = '';
     if (navElRight) navElRight.style.display = '';
 
     updateSetlistBar(0);
@@ -1933,9 +2005,9 @@ function setText(id, text) {
 
 function escapeHTML(str) {
     return String(str ?? '')
-        .replace(/&/g,  '&') // Corrigido para &
-        .replace(/</g,  '<')
-        .replace(/>/g,  '>')
+        .replace(/&/g,  '&amp;')
+        .replace(/</g,  '&lt;')
+        .replace(/>/g,  '&gt;')
         .replace(/"/g,  '&quot;')
         .replace(/'/g,  '&#39;');
 }

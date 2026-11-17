@@ -1,75 +1,244 @@
-// layout.js — reescrito para paginação instantânea e renderização correta
+// layout.js — todas as páginas de uma música são renderizadas de uma vez
+// (escondidas), então trocar de página é só alternar uma classe CSS.
+// As músicas ficam em cache para poderem ser pré-carregadas em segundo plano.
 
 import { renderAll, destroyInstance } from './renderer.js';
 
 /* ── CONSTANTES DE ESTIMATIVA DE ALTURA ──────────────────────────
  * Cabeçalho de seção e letra são medidos de verdade no DOM a cada
- * buildSheet() (ver measureBlocks) — não usam mais número fixo, então
- * nunca mais desalinham do CSS. A notação (measure-card) não dá pra
- * medir de verdade quando o OSMD vai renderizar (isso só se sabe depois
- * de renderizar, e é justamente o que queremos evitar fazer antes de
- * paginar) — pra esses casos usamos a altura mínima real do CSS mais
- * uma folga heurística por risco de quebra de linha em grooves com
- * vários compassos. Quando NÃO há OSMD envolvido (ND / compasso não
- * definido / compasso não encontrado), o conteúdo é só texto e CSS,
- * então também é medido de verdade.
+ * preparação (ver measureBlocks). A notação (measure-card) não dá pra
+ * medir antes do OSMD renderizar, então usamos a altura mínima do CSS
+ * mais uma folga heurística; se mesmo assim estourar, a autocorreção
+ * move blocos para a página seguinte.
  * ──────────────────────────────────────────────────────────────── */
 
 const SAFETY_MARGIN = 32;
-const PAIR_MARGIN = 14;   // margin-bottom dos blocos (lyric-block / notation-block)
+const PAIR_MARGIN = 14;
 
-const NOTATION_BASE_HEIGHT = 120;          // bate com .measure-card { min-height: 120px }
-const WRAP_RISK_PER_EXTRA_MEASURE = 20;    // heurística: chance de o OSMD quebrar em 2 linhas de pauta
-const WRAP_RISK_MAX = 100;                 // teto da folga, pra não voltar a desperdiçar espaço
+const NOTATION_BASE_HEIGHT = 120;
+const WRAP_RISK_PER_EXTRA_MEASURE = 20;
+const WRAP_RISK_MAX = 100;
 
 const HEADER_FALLBACK_HEIGHT = 44;
 const LYRIC_FALLBACK_HEIGHT = 30;
 
-const OVERFLOW_THRESHOLD = 8;      // mesma tolerância que já existia no aviso de overflow
-const MAX_CORRECTION_PASSES = 8;   // trava de segurança contra loop de autocorreção
+const OVERFLOW_THRESHOLD = 8;
+const MAX_CORRECTION_PASSES = 8;
 
 /* ── ESTADO ──────────────────────────────────────────────────── */
 
-let currentPages = [];
-let currentPageIdx = 0;
+const sheets = new Map();   // chave -> sheet (músicas já renderizadas ou em renderização)
+let activeSheet = null;
 let onPageChange = null;
-let currentScore = null;
-let currentXML = null;
 
-/* ── ENTRADA PRINCIPAL ───────────────────────────────────────── */
+function sheetKey(song) {
+    const layout = localStorage.getItem('holydrums_layout') === 'single' ? 'single' : 'double';
+    return `${song.id}:${song.updatedAt ?? 0}:${layout}`;
+}
 
-export async function buildSheet(contentEl, song, parsedScore) {
-    destroyAll(contentEl);
-    currentPages = [];
-    currentPageIdx = 0;
-    currentScore = parsedScore;
-    currentXML = parsedScore?._rawXML ?? null;
+/* ── PREPARAR (renderiza TUDO, sem mostrar) ──────────────────── */
 
-    // Mede no DOM (escondido) as alturas reais de cabeçalho/letra, e dos
-    // cards de notação que não dependem do OSMD (ND / sem compasso).
-    const measured = measureBlocks(contentEl, song, parsedScore);
+/**
+ * Renderiza todas as páginas da música em segundo plano.
+ * Se já estiver em cache (ou em andamento), devolve a mesma Promise.
+ */
+export function prepareSheet(contentEl, song, parsedScore) {
+    const key = sheetKey(song);
+    const cached = sheets.get(key);
+    if (cached) return cached.ready;
 
-    // Cria descritores leves (sem elementos DOM) com as alturas medidas/estimadas
-    const blocks = buildBlockDescriptors(song, parsedScore, measured);
+    const sheet = {
+        key,
+        root: null,
+        pages: [],      // descritores de blocos por página
+        pageEls: [],    // elementos DOM já renderizados
+        pageIdx: 0,
+        score: parsedScore,
+        xml: parsedScore?._rawXML ?? null,
+        dead: false,
+        ready: null,
+    };
+    sheets.set(key, sheet);
 
-    // Pagina instantaneamente usando essas alturas
-    const availableHeight = contentEl.clientHeight - SAFETY_MARGIN;
-    currentPages = paginate(blocks, availableHeight);
+    sheet.ready = buildSheetInstance(contentEl, song, sheet).catch(err => {
+        sheets.delete(key);
+        sheet.root?.remove();
+        throw err;
+    });
 
-    // Renderiza a primeira página (construindo elementos frescos no DOM)
-    await renderPage(contentEl, 0);
+    return sheet.ready;
+}
 
-    return currentPages.length;
+async function buildSheetInstance(contentEl, song, sheet) {
+    const measured = measureBlocks(contentEl, song, sheet.score);
+    const blocks = buildBlockDescriptors(song, sheet.score, measured);
+    sheet.pages = paginate(blocks, contentEl.clientHeight - SAFETY_MARGIN);
+
+    sheet.root = document.createElement('div');
+    sheet.root.className = 'sheet-root';
+    contentEl.appendChild(sheet.root);
+
+    // sheet.pages.length pode crescer durante o loop (autocorreção de overflow)
+    for (let i = 0; i < sheet.pages.length; i++) {
+        if (sheet.dead) return sheet;
+        await renderPageInto(sheet, i);
+    }
+
+    return sheet;
+}
+
+async function renderPageInto(sheet, pageIdx, correctionDepth = 0) {
+    const old = sheet.pageEls[pageIdx];
+    if (old) {
+        old.querySelectorAll('[data-render-target]').forEach(el => destroyInstance(el));
+        old.remove();
+    }
+
+    const pageEl = document.createElement('div');
+    pageEl.className = 'page';
+
+    const sheetEl = document.createElement('div');
+    sheetEl.className = 'sheet';
+    if (localStorage.getItem('holydrums_layout') === 'single') {
+        sheetEl.classList.add('sheet-single-col');
+    }
+
+    sheet.pages[pageIdx].forEach(block => {
+        if (block.type === 'header') {
+            sheetEl.appendChild(buildSectionHeaderEl(block.name));
+        } else if (block.type === 'pair') {
+            sheetEl.appendChild(buildLyricEl(block.mark));
+            sheetEl.appendChild(buildNotationEl(block.mark, block.markIdx, sheet.score));
+        }
+    });
+
+    pageEl.appendChild(sheetEl);
+    sheet.root.appendChild(pageEl);
+    sheet.pageEls[pageIdx] = pageEl;
+
+    // O OSMD precisa de largura real. A página está "visibility:hidden"
+    // (e não display:none), então o layout existe e a medida é correta.
+    await settleLayout();
+    if (sheet.dead) return;
+
+    if (sheet.score && sheet.xml) {
+        const items = collectRenderItems(sheetEl, sheet.score);
+        if (items.length) {
+            try {
+                await renderAll(items, sheet.xml);
+            } catch (err) {
+                console.warn('layout: erro ao renderizar notação', err);
+            }
+        }
+    }
+    if (sheet.dead) return;
+
+    // Autocorreção: se a página real ficou maior que o espaço disponível,
+    // devolve o último bloco para a próxima página e renderiza de novo.
+    const overflow = sheetEl.scrollHeight - pageEl.clientHeight;
+    if (overflow > OVERFLOW_THRESHOLD) {
+        if (correctionDepth < MAX_CORRECTION_PASSES && pushOverflowToNextPage(sheet, pageIdx)) {
+            await renderPageInto(sheet, pageIdx, correctionDepth + 1);
+            return;
+        }
+        console.warn(
+            `layout: página ${pageIdx + 1} ficou ${Math.round(overflow)}px maior que o espaço disponível ` +
+            `mesmo após autocorreção.`
+        );
+    }
+}
+
+function pushOverflowToNextPage(sheet, pageIdx) {
+    const page = sheet.pages[pageIdx];
+    if (!page || page.length <= 1) return false;
+
+    const moved = [page.pop()];
+
+    // Não deixa um cabeçalho de seção sozinho no fim da página
+    while (page.length > 0 && page[page.length - 1].type === 'header') {
+        moved.unshift(page.pop());
+    }
+
+    if (!page.length) {
+        page.push(...moved);
+        return false;
+    }
+
+    if (!sheet.pages[pageIdx + 1]) sheet.pages[pageIdx + 1] = [];
+    sheet.pages[pageIdx + 1].unshift(...moved);
+    return true;
+}
+
+function collectRenderItems(sheetEl, score) {
+    const items = [];
+    sheetEl.querySelectorAll('[data-render-target]').forEach(target => {
+        const start = parseInt(target.dataset.measureStart, 10);
+        const end = parseInt(target.dataset.measureEnd, 10);
+        if (!start || !score) return;
+
+        const measures = score.measures.filter(m => m.number >= start && m.number <= end);
+        if (measures.length) items.push({ container: target, measures });
+    });
+    return items;
+}
+
+/* ── MOSTRAR / NAVEGAR (instantâneo: só troca de classe) ─────── */
+
+export function showSheet(contentEl, sheet) {
+    if (!sheet || sheet.dead || !sheet.root) return 0;
+
+    contentEl.querySelectorAll('.sheet-root.active')
+        .forEach(r => r.classList.remove('active'));
+
+    sheet.root.classList.add('active');
+    activeSheet = sheet;
+    setActivePage(sheet, 0);
+    return sheet.pages.length;
+}
+
+function setActivePage(sheet, pageIdx) {
+    sheet.pageIdx = pageIdx;
+    sheet.pageEls.forEach((el, i) => el.classList.toggle('active', i === pageIdx));
+    sheet.pageEls[pageIdx]?.scrollTo(0, 0);
+    onPageChange?.(pageIdx, sheet.pages.length);
+}
+
+export function goToPage(_contentEl, pageIdx) {
+    if (!activeSheet) return;
+    if (pageIdx < 0 || pageIdx >= activeSheet.pageEls.length) return;
+    setActivePage(activeSheet, pageIdx);
+}
+
+export function nextPage(contentEl) {
+    goToPage(contentEl, (activeSheet?.pageIdx ?? 0) + 1);
+}
+
+export function prevPage(contentEl) {
+    goToPage(contentEl, (activeSheet?.pageIdx ?? 0) - 1);
+}
+
+export function getCurrentPageIdx() { return activeSheet?.pageIdx ?? 0; }
+export function getTotalPages() { return activeSheet?.pages.length ?? 0; }
+
+export function onPageChanged(callback) {
+    onPageChange = callback;
+}
+
+/* ── LIMPEZA ─────────────────────────────────────────────────── */
+
+export function clearSheets(contentEl) {
+    sheets.forEach(sheet => {
+        sheet.dead = true;
+        sheet.root?.querySelectorAll('[data-render-target]').forEach(el => destroyInstance(el));
+        sheet.root?.remove();
+    });
+    sheets.clear();
+    activeSheet = null;
+    contentEl?.querySelectorAll('.sheet-root').forEach(r => r.remove());
 }
 
 /* ── MEDIÇÃO REAL NO DOM (cabeçalho, letra, notação sem OSMD) ──── */
 
-/**
- * Cria uma cópia invisível do grid do "sheet" (mesma largura e mesmo
- * modo de coluna do render real) e mede a altura que cada bloco
- * realmente ocupa com o CSS atual — em vez de confiar em números
- * fixos que ficam desatualizados quando o CSS muda.
- */
 function measureBlocks(contentEl, song, parsedScore) {
     const probeWrap = document.createElement('div');
     probeWrap.style.position = 'absolute';
@@ -86,8 +255,6 @@ function measureBlocks(contentEl, song, parsedScore) {
     probeWrap.appendChild(probeSheet);
     document.body.appendChild(probeWrap);
 
-    // Cabeçalho de seção — altura representativa (mesma pra todas as seções;
-    // nomes muito longos que quebrem em 2 linhas não são considerados)
     const headerProbe = buildSectionHeaderEl('Sonda de medição');
     probeSheet.appendChild(headerProbe);
     const headerHeight = headerProbe.offsetHeight || HEADER_FALLBACK_HEIGHT;
@@ -98,16 +265,11 @@ function measureBlocks(contentEl, song, parsedScore) {
 
     song.sections.forEach(section => {
         section.marks.forEach((mark, markIdx) => {
-            // Letra: mede o conteúdo real (respeita \n E quebra automática
-            // de linha por texto longo, que o cálculo antigo ignorava)
             const lyricProbe = buildLyricEl(mark);
             probeSheet.appendChild(lyricProbe);
             lyricHeights.set(mark.id, lyricProbe.offsetHeight || LYRIC_FALLBACK_HEIGHT);
             probeSheet.removeChild(lyricProbe);
 
-            // Notação: só dá pra medir de verdade quando NÃO depende do OSMD
-            // (ND, compasso não definido/não encontrado) — esses casos são
-            // só texto e CSS, então a medição já sai exata.
             if (!hasRenderableNotation(mark, parsedScore)) {
                 const notationProbe = buildNotationEl(mark, markIdx, parsedScore);
                 if (!isSingleCol) notationProbe.style.gridColumn = '2';
@@ -122,12 +284,6 @@ function measureBlocks(contentEl, song, parsedScore) {
     return { headerHeight, lyricHeights, notationHeights };
 }
 
-/**
- * true quando o trecho realmente vai ter uma notação renderizada pelo OSMD
- * — precisa espelhar exatamente a condição usada em buildNotationEl() pra
- * não subestimar a altura de trechos antigos que ainda tenham measureStart
- * salvo de antes do groove ND passar a limpar esses campos.
- */
 function hasRenderableNotation(mark, parsedScore) {
     if (!parsedScore || !mark.measureStart) return false;
     const start = mark.measureStart;
@@ -164,13 +320,6 @@ function buildBlockDescriptors(song, parsedScore, measured) {
     return blocks;
 }
 
-/**
- * Altura da notação. Quando o OSMD vai renderizar de verdade, não dá pra
- * medir com antecedência — usamos a altura mínima real do CSS (120px) mais
- * uma folga que cresce com o número de compassos do trecho, já que grooves
- * com vários compassos têm mais chance do OSMD quebrar em 2 linhas de pauta
- * (isso depende da densidade de notas, então é uma heurística, não garantia).
- */
 function estimateNotationHeight(mark, parsedScore, measured) {
     if (!hasRenderableNotation(mark, parsedScore)) {
         return measured.notationHeights.get(mark.id) ?? NOTATION_BASE_HEIGHT;
@@ -187,7 +336,7 @@ function estimateNotationHeight(mark, parsedScore, measured) {
 /* ── PAGINAÇÃO ───────────────────────────────────────────────── */
 
 function paginate(blocks, availableHeight) {
-    if (availableHeight <= 0) availableHeight = 600; // fallback se o container não tiver altura
+    if (availableHeight <= 0) availableHeight = 600;
 
     const pages = [];
     let currentPageBlocks = [];
@@ -197,7 +346,6 @@ function paginate(blocks, availableHeight) {
         const block = blocks[i];
         const blockHeight = block.estimatedHeight;
 
-        // Evita que um header fique sozinho no final da página
         let nextBlockHeight = 0;
         if (block.type === 'header' && i + 1 < blocks.length) {
             nextBlockHeight = blocks[i + 1].estimatedHeight;
@@ -226,142 +374,6 @@ function paginate(blocks, availableHeight) {
     }
 
     return pages.length ? pages : [[]];
-}
-
-/* ── RENDERIZAÇÃO DE PÁGINA ──────────────────────────────────── */
-
-async function renderPage(contentEl, pageIdx, correctionDepth = 0) {
-    // Limpa a página anterior
-    contentEl.querySelectorAll('.page').forEach(p => {
-        p.querySelectorAll('[data-render-target]').forEach(el => destroyInstance(el));
-        p.remove();
-    });
-
-    const page = currentPages[pageIdx];
-    const pageEl = document.createElement('div');
-    pageEl.className = 'page active';
-
-    const sheet = document.createElement('div');
-    sheet.className = 'sheet';
-    if (localStorage.getItem('holydrums_layout') === 'single') {
-        sheet.classList.add('sheet-single-col');
-    }
-
-    // Constrói elementos FRESCOS para cada bloco (sem cloneNode)
-    page.forEach(block => {
-        if (block.type === 'header') {
-            sheet.appendChild(buildSectionHeaderEl(block.name));
-        } else if (block.type === 'pair') {
-            sheet.appendChild(buildLyricEl(block.mark));
-            sheet.appendChild(buildNotationEl(block.mark, block.markIdx, currentScore));
-        }
-    });
-
-    pageEl.appendChild(sheet);
-    contentEl.appendChild(pageEl);
-
-    // Força o browser a "assentar" o layout antes de chamar o OSMD.
-    // Um único rAF não é suficiente após uma troca de layout (grid-template-columns
-    // muda a largura do container e as fontes do Google Fonts podem reajustar
-    // métricas em seguida) — por isso aguardamos dois frames + as fontes prontas,
-    // garantindo que o OSMD meça a largura final, não uma intermediária.
-    await settleLayout();
-
-    // Renderiza notação OSMD nos containers já presentes no DOM
-    if (currentScore && currentXML) {
-        const renderItems = collectRenderItems(sheet);
-        if (renderItems.length) {
-            try {
-                await renderAll(renderItems, currentXML);
-            } catch (err) {
-                console.warn('layout: erro ao renderizar notação', err);
-            }
-        }
-    }
-
-    // Autocorreção: se a página real ficar maior que o espaço disponível
-    // (a heurística de notação subestimou o quanto o OSMD ia quebrar em
-    // linhas), devolve o(s) último(s) bloco(s) pra próxima página e
-    // re-renderiza esta já corrigida — em vez de só logar e deixar cortado.
-    const overflow = sheet.scrollHeight - contentEl.clientHeight;
-    if (overflow > OVERFLOW_THRESHOLD) {
-        if (correctionDepth < MAX_CORRECTION_PASSES && pushOverflowToNextPage(pageIdx)) {
-            await renderPage(contentEl, pageIdx, correctionDepth + 1);
-            return;
-        }
-
-        // Não deu pra corrigir sozinho (sobrou 1 bloco só e mesmo assim não
-        // cabe, ou esgotou as tentativas) — aí sim só avisa no console.
-        console.warn(
-            `layout: página ${pageIdx + 1} ficou ${Math.round(overflow)}px maior que o espaço disponível ` +
-            `mesmo após autocorreção (estimativa de altura ficou muito abaixo do real nesta página).`
-        );
-    }
-}
-
-/**
- * Move o(s) último(s) bloco(s) da página `pageIdx` para o início da próxima
- * página, como resposta a um overflow real medido depois do render do OSMD.
- * Também evita deixar um cabeçalho de seção sozinho, sem nenhum trecho
- * abaixo, no fim da página — mesma regra que a paginação inicial já respeita
- * (ver headerWouldBeOrphan em paginate()).
- *
- * Só mexe na página atual e na seguinte; páginas já visitadas antes não são
- * alteradas retroativamente. Se a próxima página ainda não existir (esta é
- * a última), ela é criada — o que aumenta o total de páginas da música.
- */
-function pushOverflowToNextPage(pageIdx) {
-    const page = currentPages[pageIdx];
-    if (!page || page.length <= 1) return false;
-
-    const moved = [page.pop()];
-
-    while (page.length > 0 && page[page.length - 1].type === 'header') {
-        moved.unshift(page.pop());
-    }
-
-    if (!page.length) {
-        // Não sobrou nada além do(s) cabeçalho(s) — desfaz e desiste;
-        // não há como encolher mais esta página.
-        page.push(...moved);
-        return false;
-    }
-
-    if (!currentPages[pageIdx + 1]) currentPages[pageIdx + 1] = [];
-    currentPages[pageIdx + 1].unshift(...moved);
-
-    return true;
-}
-
-/** Garante que o layout (largura real do container) já assentou antes de medir. */
-async function settleLayout() {
-    await new Promise(resolve => requestAnimationFrame(resolve));
-    await new Promise(resolve => requestAnimationFrame(resolve));
-    if (document.fonts?.ready) {
-        try { await document.fonts.ready; } catch { /* noop */ }
-    }
-}
-
-function collectRenderItems(sheet) {
-    const items = [];
-    const targets = sheet.querySelectorAll('[data-render-target]');
-
-    targets.forEach(target => {
-        const start = parseInt(target.dataset.measureStart, 10);
-        const end = parseInt(target.dataset.measureEnd, 10);
-
-        if (!start || !currentScore) return;
-
-        const measures = currentScore.measures.filter(
-            m => m.number >= start && m.number <= end
-        );
-
-        if (measures.length) {
-            items.push({ container: target, measures });
-        }
-    });
-
-    return items;
 }
 
 /* ── CONSTRUTORES DE ELEMENTOS DOM ───────────────────────────── */
@@ -451,42 +463,16 @@ function buildNotationEl(mark, markIdx, parsedScore) {
     return el;
 }
 
-/* ── NAVEGAÇÃO ───────────────────────────────────────────────── */
-
-export async function goToPage(contentEl, pageIdx) {
-    if (pageIdx < 0 || pageIdx >= currentPages.length) return;
-    currentPageIdx = pageIdx;
-    // Aguarda o render (que pode incluir passes de autocorreção e por isso
-    // mudar currentPages.length) antes de avisar a UI do total de páginas.
-    await renderPage(contentEl, pageIdx);
-    onPageChange?.(pageIdx, currentPages.length);
-}
-
-export function nextPage(contentEl) {
-    goToPage(contentEl, currentPageIdx + 1);
-}
-
-export function prevPage(contentEl) {
-    goToPage(contentEl, currentPageIdx - 1);
-}
-
-export function getCurrentPageIdx() { return currentPageIdx; }
-export function getTotalPages() { return currentPages.length; }
-
-export function onPageChanged(callback) {
-    onPageChange = callback;
-}
-
-/* ── LIMPEZA ─────────────────────────────────────────────────── */
-
-function destroyAll(contentEl) {
-    contentEl.querySelectorAll('[data-render-target]').forEach(el => {
-        destroyInstance(el);
-    });
-    contentEl.querySelectorAll('.page').forEach(p => p.remove());
-}
-
 /* ── UTILITÁRIOS ─────────────────────────────────────────────── */
+
+/** Garante que o layout (largura real do container) já assentou antes de medir. */
+async function settleLayout() {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    if (document.fonts?.ready) {
+        try { await document.fonts.ready; } catch { /* noop */ }
+    }
+}
 
 function grooveLabel(groove, idx) {
     if (groove === 'nd') return 'Sem bateria';
@@ -497,9 +483,9 @@ function grooveLabel(groove, idx) {
 
 function escapeHTML(str) {
     return String(str ?? '')
-        .replace(/&/g, '&')
-        .replace(/</g, '<')
-        .replace(/>/g, '>')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 }

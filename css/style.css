@@ -2071,3 +2071,34 @@ mark.g12 {
 }
 
 .n12 .measure-tag { color: rgb(var(--c12)); }
+
+/* ── Cache de páginas pré-renderizadas ── */
+.sheet-root {
+    position: absolute;
+    inset: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.sheet-root.active {
+    visibility: visible;
+    pointer-events: auto;
+}
+
+/* sobrescreve .page { display:none } — as páginas ficam todas "vivas" no DOM */
+.sheet-root .page {
+    position: absolute;
+    inset: 0;
+    display: block;
+    overflow-y: auto;
+    visibility: hidden;
+}
+
+.sheet-root .page.active {
+    visibility: visible;
+}
+
+/* visibility é herdada, mas um filho "visible" vence o pai "hidden" — isto impede o vazamento */
+.sheet-root:not(.active) .page {
+    visibility: hidden !important;
+}
