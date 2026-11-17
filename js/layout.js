@@ -42,7 +42,7 @@ function sheetKey(song) {
  * Renderiza todas as páginas da música em segundo plano.
  * Se já estiver em cache (ou em andamento), devolve a mesma Promise.
  */
-export function prepareSheet(contentEl, song, parsedScore) {
+export function prepareSheet(contentEl, song, parsedScore, onProgress = null) {
     const key = sheetKey(song);
     const cached = sheets.get(key);
     if (cached) return cached.ready;
@@ -57,6 +57,7 @@ export function prepareSheet(contentEl, song, parsedScore) {
         xml: parsedScore?._rawXML ?? null,
         dead: false,
         ready: null,
+        onProgress,
     };
     sheets.set(key, sheet);
 
@@ -82,6 +83,7 @@ async function buildSheetInstance(contentEl, song, sheet) {
     for (let i = 0; i < sheet.pages.length; i++) {
         if (sheet.dead) return sheet;
         await renderPageInto(sheet, i);
+        sheet.onProgress?.(i + 1, sheet.pages.length);
     }
 
     return sheet;

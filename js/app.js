@@ -1678,15 +1678,18 @@ function handleSave() {
  * ════════════════════════════════════════════════════════════════ */
 
 let viewerState = {
-    songs:      [],
-    songIdx:    0,
+    songs:       [],
+    songIdx:     0,
     parsedScore: null,
-    scoreCache: new Map(), // song.id -> MusicXML já parseado (ou null)
+    scoreCache:  new Map(), // song.id -> MusicXML já parseado (ou null)
+    title:       '',
+    subtitle:    '',
+    started:     false,     // o usuário já tocou em "Toque para iniciar"
+    preparing:   false,     // tela de "Preparando as músicas" ativa
 };
 
-// Identifica a "rodada" de pré-carregamento atual; trocar de música ou
-// de layout cancela a rodada anterior.
-let preloadRun = 0;
+let prepareToken = 0;                 // cancela uma preparação em andamento
+let viewerSize   = { w: 0, h: 0 };    // tamanho da área de conteúdo usado na paginação
 
 async function initViewer() {
     const params    = new URLSearchParams(window.location.search);
@@ -1700,7 +1703,9 @@ async function initViewer() {
             window.location.href = 'index.html';
             return;
         }
-        viewerState.songs = resolved.songs;
+        viewerState.songs    = resolved.songs;
+        viewerState.title    = resolved.name;
+        viewerState.subtitle = `${resolved.songs.length} ${resolved.songs.length === 1 ? 'música' : 'músicas'}`;
         initSetlistBar(resolved.songs);
     } else if (songId) {
         const song = getSongById(songId);
@@ -1709,7 +1714,9 @@ async function initViewer() {
             window.location.href = 'index.html';
             return;
         }
-        viewerState.songs = [song];
+        viewerState.songs    = [song];
+        viewerState.title    = song.title;
+        viewerState.subtitle = song.artist ?? '';
     } else {
         window.location.href = 'index.html';
         return;
@@ -1719,7 +1726,147 @@ async function initViewer() {
     onPageChanged((pageIdx, total) => updatePageControls(pageIdx, total));
 
     bindViewerEvents();
-    await loadSongInViewer(0);
+    showStartScreen();
+}
+
+/* ── TELA DE INÍCIO / PREPARAÇÃO ─────────────────────────────── */
+
+function setOverlayMode(mode) {
+    const overlay = document.getElementById('viewer-overlay');
+    if (!overlay) return;
+
+    overlay.hidden = mode === 'hidden';
+
+    const startPanel    = document.getElementById('overlay-start');
+    const progressPanel = document.getElementById('overlay-progress');
+    if (startPanel)    startPanel.hidden    = mode !== 'start';
+    if (progressPanel) progressPanel.hidden = mode !== 'progress';
+}
+
+function setProgress(fraction, status) {
+    const pct = Math.max(0, Math.min(100, Math.round(fraction * 100)));
+
+    const bar = document.getElementById('progress-bar');
+    if (bar) bar.style.width = `${pct}%`;
+
+    setText('progress-text', `${pct}%`);
+    if (status) setText('overlay-status', status);
+}
+
+function showStartScreen() {
+    setText('overlay-title',    viewerState.title);
+    setText('overlay-subtitle', viewerState.subtitle);
+    setOverlayMode('start');
+
+    document.getElementById('btn-start')
+        ?.addEventListener('click', startSession, { once: true });
+
+    document.getElementById('btn-start-back')
+        ?.addEventListener('click', () => {
+            window.location.href = 'index.html';
+        });
+}
+
+/** Chamado pelo toque do usuário: entra em tela cheia e só então prepara tudo. */
+async function startSession() {
+    viewerState.started = true;
+
+    setOverlayMode('progress');
+    setProgress(0, 'Entrando em tela cheia…');
+
+    await enterFullscreen();
+    await runPreparation(0);
+}
+
+/** Entra em tela cheia (se possível) e espera o tamanho da tela assentar. */
+async function enterFullscreen() {
+    const el  = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    const already = document.fullscreenElement || document.webkitFullscreenElement;
+
+    if (req && !already) {
+        try {
+            const changed = new Promise(resolve => {
+                const done = () => resolve();
+                document.addEventListener('fullscreenchange', done, { once: true });
+                document.addEventListener('webkitfullscreenchange', done, { once: true });
+                setTimeout(resolve, 1200); // não trava se o navegador não avisar
+            });
+            await req.call(el);
+            await changed;
+        } catch (err) {
+            console.warn(`Erro ao ativar tela cheia: ${err.message}`);
+        }
+    }
+
+    await settleLayout();
+    await new Promise(resolve => setTimeout(resolve, 300));
+}
+
+function getContentSize() {
+    const el = document.getElementById('viewer-content');
+    return { w: el?.clientWidth ?? 0, h: el?.clientHeight ?? 0 };
+}
+
+function sizeChanged(a, b) {
+    return Math.abs(a.w - b.w) >= 20 || Math.abs(a.h - b.h) >= 40;
+}
+
+/**
+ * Renderiza TODAS as músicas (com barra de progresso) e só então mostra a
+ * música `songIdx`. Se o tamanho da tela mudar no meio do caminho, refaz.
+ */
+async function runPreparation(songIdx) {
+    const token     = ++prepareToken;
+    const contentEl = document.getElementById('viewer-content');
+    const total     = viewerState.songs.length;
+
+    viewerState.preparing = true;
+    setOverlayMode('progress');
+    setProgress(0, 'Preparando as músicas…');
+
+    try {
+        for (let attempt = 0; attempt < 3; attempt++) {
+            const sizeAtStart = getContentSize();
+
+            for (let i = 0; i < total; i++) {
+                if (token !== prepareToken) return;
+
+                const song  = viewerState.songs[i];
+                const label = total > 1
+                    ? `Preparando "${song.title}" (${i + 1} de ${total})`
+                    : `Preparando "${song.title}"`;
+
+                setProgress(i / total, label);
+
+                try {
+                    const parsed = await getScoreFor(song);
+                    await prepareSheet(contentEl, song, parsed, (done, pages) => {
+                        if (token !== prepareToken) return;
+                        setProgress((i + done / Math.max(pages, 1)) / total, label);
+                    });
+                } catch (err) {
+                    console.warn(`viewer: falha ao preparar "${song.title}"`, err);
+                }
+
+                setProgress((i + 1) / total, label);
+            }
+
+            if (token !== prepareToken) return;
+
+            // A tela mudou de tamanho durante a preparação? Então a paginação
+            // ficou desatualizada: descarta tudo e refaz com o tamanho novo.
+            if (!sizeChanged(sizeAtStart, getContentSize())) break;
+            clearSheets(contentEl);
+        }
+
+        viewerSize = getContentSize();
+
+        await loadSongInViewer(songIdx);
+        setOverlayMode('hidden');
+    } finally {
+        if (token === prepareToken) viewerState.preparing = false;
+    }
 }
 
 /** Faz o parse do MusicXML da música uma única vez e guarda em cache. */
@@ -1747,6 +1894,7 @@ async function getScoreFor(song) {
     return parsed;
 }
 
+/** Mostra uma música (já preparada em cache). Troca instantânea. */
 async function loadSongInViewer(songIdx) {
     viewerState.songIdx = songIdx;
 
@@ -1779,51 +1927,18 @@ async function loadSongInViewer(songIdx) {
     const parsed = await getScoreFor(song);
     viewerState.parsedScore = parsed;
 
-    // Se a música já foi pré-carregada, isto resolve na hora.
+    // Normalmente já está em cache e resolve na hora.
     const sheet = await prepareSheet(contentEl, song, parsed);
 
-    // O usuário pode ter trocado de música (ou o cache ter sido invalidado)
-    // enquanto carregava.
     if (viewerState.songIdx !== songIdx || sheet.dead) return;
 
     showSheet(contentEl, sheet);
-
-    // Com a música atual na tela, prepara as outras em segundo plano
-    preloadOtherSongs(songIdx);
 }
 
-/** Pré-carrega em segundo plano: próximas músicas primeiro, depois as anteriores. */
-async function preloadOtherSongs(currentIdx) {
-    const run       = ++preloadRun;
-    const contentEl = document.getElementById('viewer-content');
-    const total     = viewerState.songs.length;
-
-    const order = [];
-    for (let i = currentIdx + 1; i < total; i++) order.push(i);
-    for (let i = currentIdx - 1; i >= 0; i--)    order.push(i);
-
-    for (const idx of order) {
-        if (run !== preloadRun) return;
-
-        const song = viewerState.songs[idx];
-        try {
-            const parsed = await getScoreFor(song);
-            if (run !== preloadRun) return;
-            await prepareSheet(contentEl, song, parsed);
-        } catch (err) {
-            console.warn(`viewer: falha ao pré-carregar "${song.title}"`, err);
-        }
-
-        // Respiro entre músicas, para não travar a interface
-        await new Promise(resolve => setTimeout(resolve, 50));
-    }
-}
-
-/** Descarta tudo o que foi renderizado e recarrega a música atual (layout/tamanho mudou). */
+/** Descarta tudo e prepara de novo (mudou o layout de colunas ou o tamanho da tela). */
 function invalidateAndReload() {
-    preloadRun++;
     clearSheets(document.getElementById('viewer-content'));
-    loadSongInViewer(viewerState.songIdx);
+    runPreparation(viewerState.songIdx);
 }
 
 /* ── CONTROLES DE PÁGINA ─────────────────────────────────────── */
@@ -1892,22 +2007,16 @@ function bindViewerEvents() {
                 loadSongInViewer(viewerState.songIdx + 1);
         });
 
-    // ── Tamanho da tela mudou (tela cheia, rotação do tablet) ──
+    // ── Tamanho da tela mudou (saiu da tela cheia, rotação do tablet) ──
     // A paginação depende do tamanho da área de conteúdo, então as páginas
     // em cache deixam de valer e precisam ser refeitas.
-    let lastW = contentEl.clientWidth;
-    let lastH = contentEl.clientHeight;
     let resizeTimer = null;
 
     window.addEventListener('resize', () => {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
-            const w = contentEl.clientWidth;
-            const h = contentEl.clientHeight;
-            // Tolerância: pequenas variações (barra do navegador) não refazem tudo
-            if (Math.abs(w - lastW) < 20 && Math.abs(h - lastH) < 40) return;
-            lastW = w;
-            lastH = h;
+            if (!viewerState.started || viewerState.preparing) return;
+            if (!sizeChanged(viewerSize, getContentSize())) return;
             invalidateAndReload();
         }, 400);
     });
